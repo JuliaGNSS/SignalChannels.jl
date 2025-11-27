@@ -1,0 +1,5 @@
+include("signal_channel.jl")
+include("channel_utilities.jl")
+include("stream_utilities.jl")
+include("periodogram.jl")
+include("soapysdr_ext.jl")

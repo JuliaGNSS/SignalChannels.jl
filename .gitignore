@@ -1,0 +1,39 @@
+# Julia files
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+deps/deps.jl
+Manifest.toml
+
+# Documentation build
+docs/build/
+docs/site/
+docs/plans/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test and coverage
+coverage/
+*.lcov
+lcov.info
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# Package manager
+/dev/
+LocalPreferences.toml
+
+# Data files (SDR recordings)
+*.dat
+*.bin
+*.raw
+*.iq
