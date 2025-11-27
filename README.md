@@ -7,7 +7,8 @@ A Julia package for streaming signal processing with multi-channel support. Sign
 - **SignalChannel**: Type-safe channels that enforce matrix dimensions for multi-antenna/multi-channel data
 - **Channel Utilities**: Tools for consuming, splitting (tee), rechunking, and file I/O
 - **Stream Utilities**: Helpers for generating and buffering signal streams
-- **SoapySDR Extension**: Optional integration with SoapySDR for real-time SDR data streaming
+- **Periodogram Analysis**: Real-time spectrum analysis with live visualization and warning capture
+- **SoapySDR Extension**: Optional integration with SoapySDR for SDR recording and real-time streaming
 - **Thread-Safe**: Built on Julia's native concurrency primitives
 - **Flexible Sources**: Works with SDR hardware, file streams, or programmatically generated signals
 
@@ -15,7 +16,7 @@ A Julia package for streaming signal processing with multi-channel support. Sign
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/yourusername/SignalChannels.jl")
+Pkg.add(url="https://github.com/JuliaGNSS/SignalChannels.jl.git")
 ```
 
 ## Quick Start
@@ -76,13 +77,19 @@ out1, out2 = tee(input)
 # Both out1 and out2 receive the same data
 ```
 
-### Writing to Files
+### File I/O
 
 ```julia
+# Writing to files
 chan = SignalChannel{ComplexF32}(1024, 4)
+write_to_file(chan, "/home/user/data_path_")
+# Creates: /home/user/data_path_ComplexF321.dat, /home/user/data_path_ComplexF322.dat, etc.
 
-# Writes to files: data_pathComplexF321.dat, data_pathComplexF322.dat, etc.
-write_to_file(chan, "data_path")
+# Reading from files
+output_chan = read_from_file("/home/user/data_path_", 1024, 4; T=ComplexF32)
+for data in output_chan
+    # Process data
+end
 ```
 
 ### Buffering for Real-Time Applications
@@ -128,9 +135,34 @@ Device(first(Devices())) do dev
 end
 ```
 
+### High-Level SDR Functions
+
+For common SDR workflows, use these convenience functions:
+
+```julia
+using SignalChannels
+using SoapySDR
+
+# Quick spectrum analysis with live plot
+sdr_periodogram_liveplot(
+    center_freq = 1.57542e9u"Hz",
+    sampling_freq = 5e6u"Hz",
+    gain = 50u"dB"
+)
+
+# Record SDR data directly to file
+sdr_record_to_file(
+    "my_recording",
+    num_samples = 10_000_000,
+    center_freq = 2.4e9u"Hz"
+)
+```
+
 The extension provides:
 - `stream_data(stream, end_condition; leadin_buffers=16)` - Stream data from SoapySDR devices
 - `generate_stream(f, stream::SoapySDR.Stream)` - Convenience method for SoapySDR streams
+- `sdr_periodogram_liveplot(...)` - Live spectrum analysis with real-time plotting
+- `sdr_record_to_file(path, ...)` - One-line SDR recording to files
 
 ## API Reference
 
@@ -146,9 +178,11 @@ A channel that enforces matrix dimensions for type safety in multi-channel signa
 ### Channel Utilities
 
 - `consume_channel(f, channel, args...)` - Process all data from a channel until it closes
+- `consume_channel_with_warnings(f, channel; max_warnings=20)` - Process data while capturing stderr warnings
 - `tee(channel)` - Split a channel into two synchronized outputs
 - `rechunk(channel, new_size)` - Convert chunk sizes in a stream
 - `write_to_file(channel, filepath)` - Write channel data to files
+- `read_from_file(filepath, num_samples, num_channels; T=ComplexF32)` - Read data from files into a channel
 
 ### Stream Utilities
 
@@ -156,10 +190,17 @@ A channel that enforces matrix dimensions for type safety in multi-channel signa
 - `membuffer(channel, max_size)` - Add buffering for real-time applications
 - `generate_stream(gen_func, num_samples, num_antenna_channels; kwargs...)` - Generate signal streams
 
+### Periodogram Analysis
+
+- `PeriodogramData` - Data structure containing frequency bins, power values, and timestamp
+- `calculate_periodogram(channel, sampling_freq; window=hamming, push_roughly_every=100u"ms")` - Compute periodograms from signal stream
+- `periodogram_liveplot(periodogram_channel)` - Display live periodogram with warning capture
+
 ## Use Cases
 
 - **Multi-antenna GNSS receivers**: Process signals from multiple antennas simultaneously
-- **Software Defined Radio (SDR)**: Handle real-time SDR data streams
+- **Software Defined Radio (SDR)**: Handle real-time SDR data streams with recording and visualization
+- **Spectrum analysis**: Real-time periodogram visualization with warning monitoring
 - **Signal processing pipelines**: Chain processing stages with type-safe channels
 - **File-based signal processing**: Read and write multi-channel signal data
 - **Testing and simulation**: Generate synthetic multi-channel signals
@@ -177,7 +218,9 @@ SignalChannels is built on Julia's thread-safe `Channel` primitive. All operatio
 
 ## Related Packages
 
-This package was extracted from [GNSSReceiver.jl](https://github.com/yourusername/GNSSReceiver.jl) to provide reusable signal processing infrastructure.
+- [SoapySDR.jl](https://github.com/JuliaTelecom/SoapySDR.jl) - Julia bindings for SoapySDR
+- [DSP.jl](https://github.com/JuliaDSP/DSP.jl) - Digital signal processing in Julia
+- [LiveLayoutUnicodePlots.jl](https://github.com/zsoerenm/LiveLayoutUnicodePlots.jl) - Live plotting in the terminal
 
 ## License
 
