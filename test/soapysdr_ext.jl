@@ -6,6 +6,7 @@ using Test: @test, @testset, @test_throws, @test_skip, @test_broken
 if Base.find_package("SoapySDR") !== nothing
     using SignalChannels
     using SoapySDR
+    using SoapySDR: Device, SoapySDRDeviceError
     using Unitful
     using FixedSizeArrays: FixedSizeMatrixDefault
 
@@ -47,92 +48,96 @@ if Base.find_package("SoapySDR") !== nothing
 
                     try
                         Device(device_args) do dev
-                        # Configure TX
-                        tx = dev.tx[1]
-                        tx.sample_rate = sample_rate
-                        tx.frequency = center_freq
+                            # Configure TX
+                            tx = dev.tx[1]
+                            tx.sample_rate = sample_rate
+                            tx.frequency = center_freq
 
-                        # Configure RX
-                        rx = dev.rx[1]
-                        rx.sample_rate = sample_rate
-                        rx.frequency = center_freq
+                            # Configure RX
+                            rx = dev.rx[1]
+                            rx.sample_rate = sample_rate
+                            rx.frequency = center_freq
 
-                        # Create streams
-                        tx_stream = SoapySDR.Stream(ComplexF32, tx)
-                        rx_stream = SoapySDR.Stream(ComplexF32, rx)
+                            # Create streams
+                            tx_stream = SoapySDR.Stream(ComplexF32, tx)
+                            rx_stream = SoapySDR.Stream(ComplexF32, rx)
 
-                        # Create input channel for TX with proper dimensions
-                        tx_channel = SignalChannel{ComplexF32}(tx_stream.mtu, num_channels, 10)
+                            # Create input channel for TX with proper dimensions
+                            tx_channel = SignalChannel{ComplexF32}(tx_stream.mtu, num_channels, 10)
 
-                        # Start RX first (to catch all transmitted data)
-                        rx_data = Channel{Matrix{ComplexF32}}(100)
-                        rx_task = @async begin
-                            data_channel = stream_data(rx_stream, num_samples_to_send; leadin_buffers=0)
-                            for data in data_channel
-                                put!(rx_data, copy(data))
-                            end
-                            close(rx_data)
-                        end
-
-                        # Give RX time to start
-                        sleep(0.2)  # Increased for stability
-
-                        # Start TX
-                        tx_task = stream_data(tx_stream, tx_channel)
-
-                        # Feed test pattern to TX
-                        samples_sent = 0
-                        for i in 1:tx_stream.mtu:num_samples_to_send
-                            chunk_size = min(tx_stream.mtu, num_samples_to_send - samples_sent)
-
-                            # Create FixedSizeMatrixDefault buffer
-                            buffer = FixedSizeMatrixDefault{ComplexF32}(undef, tx_stream.mtu, 1)
-
-                            # Fill with test pattern
-                            buffer[1:chunk_size, 1] .= test_pattern[i:i+chunk_size-1]
-
-                            # Pad with zeros if needed
-                            if chunk_size < tx_stream.mtu
-                                buffer[chunk_size+1:end, 1] .= ComplexF32(0)
-                            end
-
-                            put!(tx_channel, buffer)
-                            samples_sent += chunk_size
-                        end
-                        close(tx_channel)
-
-                        # Wait for both tasks
-                        wait(tx_task)
-                        wait(rx_task)
-
-                        # Collect received data
-                        received_samples = ComplexF32[]
-                        for data in rx_data
-                            append!(received_samples, vec(data))
-                        end
-
-                        # Verify we received data
-                        @test length(received_samples) >= num_samples_to_send
-
-                        # Verify data matches (check first samples as loopback may have alignment issues)
-                        if length(received_samples) >= 100
-                            # Check that we see the ramp pattern in the received data
-                            # Due to potential timing/buffering, we look for the pattern rather than exact alignment
-                            pattern_found = false
-                            for offset in 1:min(1000, length(received_samples) - 100)
-                                # Check if we see increasing real and imaginary parts
-                                chunk = received_samples[offset:offset+99]
-                                differences = diff(real.(chunk))
-                                if all(d -> abs(d - 1.0f0) < 2.0f0, differences)
-                                    pattern_found = true
-                                    break
+                            # Start RX first (to catch all transmitted data)
+                            rx_data = Channel{Matrix{ComplexF32}}(100)
+                            rx_task = @async begin
+                                data_channel = stream_data(rx_stream, num_samples_to_send; leadin_buffers=0)
+                                for data in data_channel
+                                    put!(rx_data, copy(data))
                                 end
+                                close(rx_data)
                             end
-                            @test pattern_found
+
+                            # Give RX time to start
+                            sleep(0.2)  # Increased for stability
+
+                            # Start TX
+                            tx_task = stream_data(tx_stream, tx_channel)
+
+                            # Feed test pattern to TX
+                            samples_sent = 0
+                            for i in 1:tx_stream.mtu:num_samples_to_send
+                                chunk_size = min(tx_stream.mtu, num_samples_to_send - samples_sent)
+
+                                # Create FixedSizeMatrixDefault buffer
+                                buffer = FixedSizeMatrixDefault{ComplexF32}(undef, tx_stream.mtu, 1)
+
+                                # Fill with test pattern
+                                buffer[1:chunk_size, 1] .= test_pattern[i:i+chunk_size-1]
+
+                                # Pad with zeros if needed
+                                if chunk_size < tx_stream.mtu
+                                    buffer[chunk_size+1:end, 1] .= ComplexF32(0)
+                                end
+
+                                put!(tx_channel, buffer)
+                                samples_sent += chunk_size
+                            end
+                            close(tx_channel)
+
+                            # Wait for both tasks
+                            wait(tx_task)
+                            wait(rx_task)
+
+                            # Collect received data
+                            received_samples = ComplexF32[]
+                            for data in rx_data
+                                append!(received_samples, vec(data))
+                            end
+
+                            # Verify we received data
+                            @test length(received_samples) >= num_samples_to_send
+
+                            # Verify data matches (check first samples as loopback may have alignment issues)
+                            if length(received_samples) >= 100
+                                # Check that we see the ramp pattern in the received data
+                                # Due to potential timing/buffering, we look for the pattern rather than exact alignment
+                                pattern_found = false
+                                for offset in 1:min(1000, length(received_samples) - 100)
+                                    # Check if we see increasing real and imaginary parts
+                                    chunk = received_samples[offset:offset+99]
+                                    differences = diff(real.(chunk))
+                                    if all(d -> abs(d - 1.0f0) < 2.0f0, differences)
+                                        pattern_found = true
+                                        break
+                                    end
+                                end
+                                @test pattern_found
+                            end
                         end
-                        end
+
+                        # Add explicit GC after device cleanup to prevent segfaults
+                        GC.gc()
+                        sleep(0.1)
                     catch e
-                        if isa(e, TaskFailedException) || isa(e, SoapySDR.SoapySDRDeviceError)
+                        if isa(e, TaskFailedException) || isa(e, SoapySDRDeviceError)
                             @warn "Loopback test skipped due to known SoapyLoopback issues" exception=e
                             @test_broken false
                         else
