@@ -143,3 +143,40 @@ Base.eltype(c::SignalChannel) = Base.eltype(c.channel)
 Base.show(io::IO, c::SignalChannel) = Base.show(io, c.channel)
 Base.iterate(c::SignalChannel, state = nothing) = Base.iterate(c.channel, state)
 Base.IteratorSize(::Type{<:SignalChannel}) = Base.SizeUnknown()
+
+"""
+    Base.similar(c::SignalChannel{T}, [size::Int=0]) where {T}
+
+Create a new SignalChannel with the same dimensions as `c` but with optional buffer size.
+
+# Arguments
+- `c`: Input SignalChannel
+- `size`: Optional buffer size (default: 0, unbuffered)
+
+# Examples
+```julia
+input = SignalChannel{ComplexF32}(1024, 4, 10)
+output = similar(input)        # Same dimensions, unbuffered
+buffered = similar(input, 32)  # Same dimensions, buffer size 32
+```
+"""
+Base.similar(c::SignalChannel{T}, size::Int=0) where {T} =
+    SignalChannel{T}(c.num_samples, c.num_antenna_channels, size)
+
+"""
+    Base.similar(c::Channel{T}, [size::Int=0]) where {T}
+
+Create a new Channel with the same element type as `c` but with optional buffer size.
+
+# Arguments
+- `c`: Input Channel
+- `size`: Buffer size (default: 0, unbuffered)
+
+# Examples
+```julia
+input = Channel{Int}(10)
+output = similar(input)      # Same type, unbuffered
+buffered = similar(input, 20) # Same type, buffer size 20
+```
+"""
+Base.similar(c::Channel{T}, size::Int=0) where {T} = Channel{T}(size)

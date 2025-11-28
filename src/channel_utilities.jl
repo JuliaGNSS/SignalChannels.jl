@@ -107,26 +107,32 @@ function consume_channel_with_warnings(f, channel::Channel; max_warnings=20)
 end
 
 """
-    tee(in::SignalChannel{T}) where {T<:Number}
+    tee(in::AbstractChannel{T}) where {T}
 
-Returns two channels that synchronously output what comes in from `in`.
-Both output channels receive the same data from the input channel.
+Split a channel into two synchronized outputs. Both output channels receive
+identical copies of the data.
 
-This is useful for splitting a signal stream to multiple processing paths.
+Returns a tuple `(out1, out2)` of two channels with the same type as the input.
+
+For `SignalChannel`, preserves the matrix dimensions.
+For generic `Channel`, creates unbuffered output channels.
 
 # Examples
 ```julia
+# With SignalChannel
 input = SignalChannel{ComplexF32}(1024, 4)
 out1, out2 = tee(input)
 
-# Both out1 and out2 will receive the same data from input
+# With generic Channel
+input = Channel{Int}(10)
+out1, out2 = tee(input)
 ```
 """
-function tee(in::SignalChannel{T}) where {T<:Number}
-    out1 = SignalChannel{T}(in.num_samples, in.num_antenna_channels)
-    out2 = SignalChannel{T}(in.num_samples, in.num_antenna_channels)
+function tee(in::AbstractChannel)
+    out1 = similar(in)
+    out2 = similar(in)
     task = Threads.@spawn begin
-        consume_channel(in) do data
+        for data in in
             put!(out1, data)
             put!(out2, data)
         end
@@ -158,7 +164,7 @@ output = rechunk(input, 1024)
 ```
 """
 function rechunk(in::SignalChannel{T}, chunk_size::Integer) where {T<:Number}
-    return spawn_channel_thread(;
+    return spawn_signal_channel_thread(;
         T,
         num_samples=chunk_size,
         in.num_antenna_channels,
@@ -284,7 +290,7 @@ function read_from_file(file_path::String, num_samples::Integer, num_antenna_cha
         end
     end
 
-    return spawn_channel_thread(; T, num_samples, num_antenna_channels) do out
+    return spawn_signal_channel_thread(; T, num_samples, num_antenna_channels) do out
         streams = [open("$file_path$type_string$i.dat", "r") for i = 1:num_antenna_channels]
 
         try

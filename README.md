@@ -186,7 +186,7 @@ A channel that enforces matrix dimensions for type safety in multi-channel signa
 
 ### Stream Utilities
 
-- `spawn_channel_thread(f; T, num_samples, num_antenna_channels, buffers_in_flight)` - Run function in separate thread with output channel
+- `spawn_signal_channel_thread(f; T, num_samples, num_antenna_channels, buffers_in_flight)` - Run function in separate thread with SignalChannel output
 - `membuffer(channel, max_size)` - Add buffering for real-time applications
 - `generate_stream(gen_func, num_samples, num_antenna_channels; kwargs...)` - Generate signal streams
 

@@ -157,6 +157,31 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         result3 = take!(chan)
         @test all(result3 .== ComplexF32(3, 0))
     end
+
+    @testset "similar" begin
+        # Test SignalChannel similar
+        input = SignalChannel{ComplexF32}(1024, 4, 10)
+
+        # Default: unbuffered
+        output1 = similar(input)
+        @test output1 isa SignalChannel{ComplexF32}
+        @test output1.num_samples == 1024
+        @test output1.num_antenna_channels == 4
+
+        # With buffer size
+        output2 = similar(input, 32)
+        @test output2 isa SignalChannel{ComplexF32}
+        @test output2.num_samples == 1024
+        @test output2.num_antenna_channels == 4
+
+        # Test generic Channel similar
+        input_chan = Channel{Int}(10)
+        output_chan1 = similar(input_chan)
+        @test output_chan1 isa Channel{Int}
+
+        output_chan2 = similar(input_chan, 20)
+        @test output_chan2 isa Channel{Int}
+    end
 end
 
 end # module MatrixChannelTest
