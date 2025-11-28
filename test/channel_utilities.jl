@@ -125,6 +125,40 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         @test results2 == [ComplexF32(1, 0), ComplexF32(2, 0), ComplexF32(3, 0)]
     end
 
+    @testset "tee with generic Channel" begin
+        input_chan = Channel{Int}(10)
+        out1, out2 = tee(input_chan)
+
+        task = @async begin
+            for i in 1:5
+                put!(input_chan, i)
+            end
+            close(input_chan)
+        end
+
+        results1 = []
+        results2 = []
+
+        # Consume both channels concurrently
+        task1 = @async begin
+            for data in out1
+                push!(results1, data)
+            end
+        end
+
+        task2 = @async begin
+            for data in out2
+                push!(results2, data)
+            end
+        end
+
+        wait(task)
+        wait(task1)
+        wait(task2)
+        @test results1 == [1, 2, 3, 4, 5]
+        @test results2 == [1, 2, 3, 4, 5]
+    end
+
     @testset "rechunk - upsampling" begin
         # Convert 100-sample chunks to 250-sample chunks
         input_chan = SignalChannel{ComplexF32}(100, 2)

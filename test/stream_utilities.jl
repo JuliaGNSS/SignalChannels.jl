@@ -1,12 +1,12 @@
 module StreamUtilitiesTest
 
 using Test: @test, @testset
-using SignalChannels: SignalChannel, spawn_channel_thread, membuffer, generate_stream
+using SignalChannels: SignalChannel, spawn_signal_channel_thread, membuffer, generate_stream
 using FixedSizeArrays: FixedSizeMatrixDefault
 
 @testset "Stream Utilities" begin
-    @testset "spawn_channel_thread with SignalChannel" begin
-        chan = spawn_channel_thread(T=ComplexF32, num_samples=100, num_antenna_channels=2) do out
+    @testset "spawn_signal_channel_thread with SignalChannel" begin
+        chan = spawn_signal_channel_thread(T=ComplexF32, num_samples=100, num_antenna_channels=2) do out
             for i in 1:3
                 data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 100, 2))
                 put!(out, data)
@@ -25,8 +25,8 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         @test results == [ComplexF32(1, 0), ComplexF32(2, 0), ComplexF32(3, 0)]
     end
 
-    @testset "spawn_channel_thread closes on completion" begin
-        chan = spawn_channel_thread(T=Float64, num_samples=50, num_antenna_channels=1) do out
+    @testset "spawn_signal_channel_thread closes on completion" begin
+        chan = spawn_signal_channel_thread(T=Float64, num_samples=50, num_antenna_channels=1) do out
             data = FixedSizeMatrixDefault{Float64}(fill(1.0, 50, 1))
             put!(out, data)
         end
@@ -39,8 +39,8 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         @test !isopen(chan)
     end
 
-    @testset "spawn_channel_thread closes on error" begin
-        chan = spawn_channel_thread(T=Float64, num_samples=50, num_antenna_channels=1) do out
+    @testset "spawn_signal_channel_thread closes on error" begin
+        chan = spawn_signal_channel_thread(T=Float64, num_samples=50, num_antenna_channels=1) do out
             data = FixedSizeMatrixDefault{Float64}(fill(1.0, 50, 1))
             put!(out, data)
             error("Intentional error")
@@ -101,6 +101,27 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
         wait(task)
         @test count == 50
+    end
+
+    @testset "membuffer with generic Channel" begin
+        input_chan = Channel{Int}(0)
+        buffered_chan = membuffer(input_chan, 10)
+
+        task = @async begin
+            for i in 1:20
+                put!(input_chan, i)
+            end
+            close(input_chan)
+        end
+
+        results = []
+        for data in buffered_chan
+            push!(results, data)
+        end
+
+        wait(task)
+        @test results == collect(1:20)
+        @test length(results) == 20
     end
 
     @testset "generate_stream basic" begin

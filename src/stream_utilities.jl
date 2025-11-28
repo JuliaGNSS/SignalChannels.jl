@@ -6,7 +6,7 @@ function split_matrix(m::AbstractMatrix{T}) where {T<:Number}
 end
 
 """
-    spawn_channel_thread(f::Function; T=ComplexF32, num_samples, num_antenna_channels=1, buffers_in_flight=0)
+    spawn_signal_channel_thread(f::Function; T=ComplexF32, num_samples, num_antenna_channels=1, buffers_in_flight=0)
 
 Convenience wrapper to invoke `f(out_channel)` on a separate thread, closing
 `out_channel` when `f()` finishes.
@@ -21,7 +21,7 @@ Convenience wrapper to invoke `f(out_channel)` on a separate thread, closing
 # Examples
 ```julia
 # Single channel (shape: 1024×1)
-chan = spawn_channel_thread(T=ComplexF32, num_samples=1024) do out
+chan = spawn_signal_channel_thread(T=ComplexF32, num_samples=1024) do out
     for i in 1:100
         data = rand(ComplexF32, 1024, 1)
         put!(out, data)
@@ -29,7 +29,7 @@ chan = spawn_channel_thread(T=ComplexF32, num_samples=1024) do out
 end
 
 # Multi-channel (shape: 1024×4)
-chan = spawn_channel_thread(T=ComplexF32, num_samples=1024, num_antenna_channels=4) do out
+chan = spawn_signal_channel_thread(T=ComplexF32, num_samples=1024, num_antenna_channels=4) do out
     for i in 1:100
         data = rand(ComplexF32, 1024, 4)
         put!(out, data)
@@ -37,7 +37,7 @@ chan = spawn_channel_thread(T=ComplexF32, num_samples=1024, num_antenna_channels
 end
 ```
 """
-function spawn_channel_thread(f::Function; T::DataType = ComplexF32,
+function spawn_signal_channel_thread(f::Function; T::DataType = ComplexF32,
                               num_samples, num_antenna_channels = 1,
                               buffers_in_flight::Int = 0)
     SignalChannel{T}(num_samples, num_antenna_channels, buffers_in_flight, spawn=true) do out
@@ -46,23 +46,35 @@ function spawn_channel_thread(f::Function; T::DataType = ComplexF32,
 end
 
 """
-    membuffer(in::SignalChannel{T}, max_size::Int = 16) where {T <: Number}
+    membuffer(in::AbstractChannel, max_size::Int = 16)
 
-Provide some buffering for realtime applications. Creates a buffered channel that can
-hold up to `max_size` matrices in flight.
+Provide buffering for realtime applications. Creates a buffered channel that can
+hold up to `max_size` items in flight.
+
+For `SignalChannel`, preserves the matrix dimensions.
+For generic `Channel`, creates a buffered Channel of the same type.
 
 # Examples
 ```julia
+# With SignalChannel
 input = SignalChannel{ComplexF32}(1024, 4)
 buffered = membuffer(input, 32)  # Buffer up to 32 matrices
+
+# With generic Channel
+input = Channel{Int}(0)
+buffered = membuffer(input, 32)  # Buffer up to 32 integers
 ```
 """
-function membuffer(in::SignalChannel{T}, max_size::Int = 16) where {T <: Number}
-    spawn_channel_thread(;T, in.num_samples, in.num_antenna_channels, buffers_in_flight=max_size) do out
-        consume_channel(in) do buff
-            put!(out, buff)
+function membuffer(in::AbstractChannel, max_size::Int = 16)
+    out = similar(in, max_size)
+    task = Threads.@spawn begin
+        for data in in
+            put!(out, data)
         end
+        close(out)
     end
+    bind(out, task)
+    return out
 end
 
 """
@@ -97,7 +109,7 @@ function generate_stream(gen_buff!::Function, num_samples::Integer, num_antenna_
                          wrapper::Function = (f) -> f(),
                          buffers_in_flight::Integer = 1,
                          T = ComplexF32)
-    return spawn_channel_thread(;T, num_samples, num_antenna_channels, buffers_in_flight) do c
+    return spawn_signal_channel_thread(;T, num_samples, num_antenna_channels, buffers_in_flight) do c
         wrapper() do
             # Always create a fixed-size matrix buffer
             buff = FixedSizeMatrixDefault{T}(undef, num_samples, num_antenna_channels)
