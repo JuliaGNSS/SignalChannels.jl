@@ -236,12 +236,13 @@ function SignalChannels.stream_data(s_tx::SoapySDR.Stream{T}, in::SignalChannel{
 
                 GC.@preserve buffers while total_nwritten < samples_to_write
                     buff_ptrs = pointer(map(b -> pointer(b, total_nwritten + 1), buffers))
+                    out_flags = Ref{Cint}(0)
                     nwritten = SoapySDR.SoapySDRDevice_writeStream(
                         s_tx.d,
                         s_tx,
                         buff_ptrs,
                         samples_to_write - total_nwritten,
-                        nothing,
+                        out_flags,
                         0,
                         timeout_us,
                     )
