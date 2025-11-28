@@ -122,6 +122,44 @@ function Base.put!(c::SignalChannel{T}, v::FixedSizeMatrixDefault{T}) where {T}
     Base.put!(c.channel, v)
 end
 
+"""
+    put!(c::SignalChannel, v::AbstractMatrix)
+
+Put a regular matrix into the channel by converting it to a FixedSizeMatrixDefault.
+Validates that the matrix dimensions match the channel's `num_samples` and `num_antenna_channels`.
+
+This convenience method allows using regular Julia arrays without manually converting to
+FixedSizeMatrixDefault.
+
+# Arguments
+- `c`: SignalChannel to put data into
+- `v`: Regular matrix to put (will be converted to FixedSizeMatrixDefault)
+
+# Throws
+- `ArgumentError`: If matrix dimensions don't match the channel configuration
+
+# Examples
+```julia
+chan = SignalChannel{ComplexF32}(1024, 4)
+
+# Can now use regular arrays directly
+data = rand(ComplexF32, 1024, 4)
+put!(chan, data)  # Automatically converts to FixedSizeMatrixDefault
+```
+"""
+function Base.put!(c::SignalChannel{T}, v::AbstractMatrix{T}) where {T}
+    if size(v, 1) != c.num_samples || size(v, 2) != c.num_antenna_channels
+        throw(
+            ArgumentError(
+                "Matrix dimensions $(size(v)) do not match expected ($(c.num_samples), $(c.num_antenna_channels))",
+            ),
+        )
+    end
+    # Convert to FixedSizeMatrixDefault
+    fixed_matrix = FixedSizeMatrixDefault{T}(v)
+    Base.put!(c.channel, fixed_matrix)
+end
+
 # Delegate Base methods to the underlying channel
 Base.bind(c::SignalChannel, task::Task) = Base.bind(c.channel, task)
 Base.take!(c::SignalChannel) = Base.take!(c.channel)

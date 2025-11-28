@@ -10,9 +10,6 @@ LiveLayoutUnicodePlots = "8b8f1234-5678-9012-3456-789012345678"
 UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
 Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
-[weakdeps]
-SoapySDR = "4fa426e6-03fd-45b2-b2dd-25f726820c03"
-
 [extensions]
 SignalChannelsSoapySDRExt = "SoapySDR"
 
@@ -20,6 +17,7 @@ SignalChannelsSoapySDRExt = "SoapySDR"
 DSP = "0.7, 0.8"
 FixedSizeArrays = "1"
 LiveLayoutUnicodePlots = "0.1.0"
+SoapyLoopback_jll = "0.1.1"
 SoapySDR = "0.5"
 UnicodePlots = "3"
 Unitful = "1"
