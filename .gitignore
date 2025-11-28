@@ -32,6 +32,9 @@ lcov.info
 /dev/
 LocalPreferences.toml
 
+# Worktrees
+.worktrees/
+
 # Data files (SDR recordings)
 *.dat
 *.bin
