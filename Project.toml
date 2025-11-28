@@ -26,8 +26,9 @@ Unitful = "1"
 julia = "1.10"
 
 [extras]
+SoapyLoopback_jll = "8d250ce8-a086-56bd-8a36-e4e8f4202680"
 SoapySDR = "4fa426e6-03fd-45b2-b2dd-25f726820c03"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test", "SoapySDR"]
+test = ["Test", "SoapySDR", "SoapyLoopback_jll"]
