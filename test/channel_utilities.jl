@@ -254,7 +254,8 @@ using FixedSizeArrays: FixedSizeMatrixDefault
                 close(input_chan)
             end
 
-            write_to_file(input_chan, filepath)
+            write_task = write_to_file(input_chan, filepath)
+            wait(write_task)
             wait(task)
 
             # Check that files were created
@@ -287,7 +288,8 @@ using FixedSizeArrays: FixedSizeMatrixDefault
                 close(input_chan)
             end
 
-            write_to_file(input_chan, filepath)
+            write_task = write_to_file(input_chan, filepath)
+            wait(write_task)
             wait(task)
 
             @test isfile(filepath * "Float641.dat")
@@ -307,7 +309,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             input_chan = SignalChannel{ComplexF32}(100, 3, 10)
             filepath = joinpath(tmpdir, "test_read")
 
-            write_task = @async begin
+            task = @async begin
                 for i in 1:5
                     data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, i), 100, 3))
                     put!(input_chan, data)
@@ -315,8 +317,9 @@ using FixedSizeArrays: FixedSizeMatrixDefault
                 close(input_chan)
             end
 
-            write_to_file(input_chan, filepath)
+            write_task = write_to_file(input_chan, filepath)
             wait(write_task)
+            wait(task)
 
             # Now read it back
             output_chan = read_from_file(filepath, 100, 3; T=ComplexF32)
@@ -336,7 +339,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             input_chan = SignalChannel{Float64}(100, 2, 10)
             filepath = joinpath(tmpdir, "test_rechunk")
 
-            write_task = @async begin
+            task = @async begin
                 for i in 1:5
                     data = FixedSizeMatrixDefault{Float64}(fill(Float64(i), 100, 2))
                     put!(input_chan, data)
@@ -344,8 +347,9 @@ using FixedSizeArrays: FixedSizeMatrixDefault
                 close(input_chan)
             end
 
-            write_to_file(input_chan, filepath)
+            write_task = write_to_file(input_chan, filepath)
             wait(write_task)
+            wait(task)
 
             # Read back with different chunk size
             output_chan = read_from_file(filepath, 50, 2; T=Float64)

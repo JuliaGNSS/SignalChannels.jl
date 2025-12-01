@@ -228,7 +228,8 @@ Files are created with the pattern: `{file_path}{Type}{channel_number}.dat`
 ```julia
 chan = SignalChannel{ComplexF32}(1024, 4)
 # This will create files: data_pathComplexF321.dat, data_pathComplexF322.dat, etc.
-write_to_file(chan, "data_path")
+task = write_to_file(chan, "data_path")
+wait(task)
 ```
 """
 function write_to_file(in::SignalChannel{T}, file_path::String) where {T<:Number}
@@ -247,9 +248,8 @@ function write_to_file(in::SignalChannel{T}, file_path::String) where {T<:Number
             close.(streams)
         end
     end
-    bind(in, task)
-    # Wait for the task to complete before returning
-    wait(task)
+    Base.errormonitor(task)
+    return task
 end
 
 """
