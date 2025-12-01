@@ -273,7 +273,7 @@ function SignalChannels.stream_data(s_tx::SoapySDR.Stream{T}, in::SignalChannel{
             sleep(1)
         end
     end
-    bind(in, task)
+    Base.errormonitor(task)
     return task
 end
 
@@ -444,7 +444,8 @@ function SignalChannels.sdr_record_to_file(
         data_stream = SignalChannels.stream_data(stream, num_samples)
 
         # Write directly to file
-        SignalChannels.write_to_file(data_stream, file_path)
+        task = SignalChannels.write_to_file(data_stream, file_path)
+        wait(task)
     end
 end
 
