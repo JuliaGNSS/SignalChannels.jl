@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v1.0.1...v1.0.2) (2025-12-01)
+
+
+### Bug Fixes
+
+* tasks should only be bound to out channels ([619f82c](https://github.com/JuliaGNSS/SignalChannels.jl/commit/619f82c8dad8f0ebd57d8c400e6e92b6695c4360))
+
 ## [1.0.1](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v1.0.0...v1.0.1) (2025-11-28)
 
 
