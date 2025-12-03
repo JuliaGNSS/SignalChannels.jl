@@ -97,19 +97,49 @@ function calculate_periodogram(
 end
 
 """
-    periodogram_liveplot(periodogram_channel::Channel{PeriodogramData})
+    periodogram_liveplot(periodogram_channel::Channel{PeriodogramData}; warning_channel=nothing, max_warnings=20)
 
 Displays a real-time updating plot of the periodogram data using LivePlot with UnicodePlots.
 The plot updates as new periodogram data arrives through the channel.
+
+If a `warning_channel` is provided (Channel{StreamWarning}), warnings will be displayed in a side panel.
+The most recent `max_warnings` warnings are shown.
+
+# Arguments
+- `periodogram_channel::Channel{PeriodogramData}`: Channel yielding periodogram data
+- `warning_channel::Union{Nothing, Channel{StreamWarning}}`: Optional channel for warnings (default: nothing)
+- `max_warnings::Integer`: Maximum number of warnings to display (default: 20)
 """
-function periodogram_liveplot(periodogram_channel::Channel{PeriodogramData})
+function periodogram_liveplot(periodogram_channel::Channel{PeriodogramData};
+    warning_channel::Union{Nothing,Channel{StreamWarning}}=nothing,
+    max_warnings::Integer=20)
     live_plot = LivePlot()
 
     # Track min/max power values across all iterations
     min_power = Inf
     max_power = -Inf
 
-    consume_channel_with_warnings(periodogram_channel; max_warnings=20) do pgram_data, accumulated_warnings
+    # Accumulated warnings buffer
+    warning_lines = String[]
+
+    consume_channel(periodogram_channel) do pgram_data
+        # Drain any available warnings from the warning channel (non-blocking)
+        if !isnothing(warning_channel)
+            while isready(warning_channel)
+                warning = take!(warning_channel)
+                # Format warning as string
+                if isnothing(warning.error_code)
+                    push!(warning_lines, "$(warning.type) at $(warning.time_str)")
+                else
+                    push!(warning_lines, "$(warning.type) at $(warning.time_str): $(warning.error_string)")
+                end
+                # Keep only most recent warnings
+                if length(warning_lines) > max_warnings
+                    popfirst!(warning_lines)
+                end
+            end
+        end
+
         # Track minimum and maximum power values
         power = 10 .* log10.(pgram_data.powers)
         min_power = min(min_power, minimum(power))
@@ -126,7 +156,7 @@ function periodogram_liveplot(periodogram_channel::Channel{PeriodogramData})
                 ylim=(min_power, max_power),
             ),
             textplot(
-                join(accumulated_warnings, '\n');
+                join(warning_lines, '\n');
                 width=40,
                 title="Recent Warnings",
                 border=:solid
