@@ -2,6 +2,38 @@ import Base.close, Base.put!, Base.close, Base.isempty
 using FixedSizeArrays: FixedSizeMatrixDefault
 
 """
+    StreamWarning
+
+Represents a warning event that occurred during stream processing.
+Used to communicate errors/warnings from hot loops without blocking.
+
+# Fields
+- `type::Symbol`: Warning type (e.g., `:overflow`, `:underflow`, `:timeout`, `:error`)
+- `time_str::String`: Human-readable time when the warning occurred
+- `error_code::Union{Int,Nothing}`: Optional error code from the underlying API
+- `error_string::Union{String,Nothing}`: Optional error description
+
+# Examples
+```julia
+warning = StreamWarning(:overflow, "1.5s", nothing, nothing)
+warning = StreamWarning(:error, "2.3s", -5, "Unknown error")
+```
+"""
+struct StreamWarning
+    type::Symbol
+    time_str::String
+    error_code::Union{Int,Nothing}
+    error_string::Union{String,Nothing}
+end
+
+"""
+    StreamWarning(type::Symbol, time_str::String)
+
+Convenience constructor for simple warnings without error codes.
+"""
+StreamWarning(type::Symbol, time_str::String) = StreamWarning(type, time_str, nothing, nothing)
+
+"""
     SignalChannel{T} <: AbstractChannel{T}
 
 A specialized channel type that enforces matrix dimensions for multi-channel signal data.
@@ -42,8 +74,8 @@ struct SignalChannel{T} <: AbstractChannel{T}
     channel::Channel{FixedSizeMatrixDefault{T}}
     function SignalChannel{T}(
         num_samples::Integer,
-        num_antenna_channels::Integer = 1,
-        sz::Integer = 0,
+        num_antenna_channels::Integer=1,
+        sz::Integer=0,
     ) where {T}
         return new(num_samples, num_antenna_channels, Channel{FixedSizeMatrixDefault{T}}(sz))
     end
@@ -84,10 +116,10 @@ end
 function SignalChannel{T}(
     func::Function,
     num_samples::Integer,
-    num_antenna_channels::Integer = 1,
-    size = 0;
-    taskref = nothing,
-    spawn = false,
+    num_antenna_channels::Integer=1,
+    size=0;
+    taskref=nothing,
+    spawn=false,
 ) where {T}
     chnl = SignalChannel{T}(num_samples, num_antenna_channels, size)
     task = Task(() -> func(chnl))
@@ -163,7 +195,7 @@ end
 # Delegate Base methods to the underlying channel
 Base.bind(c::SignalChannel, task::Task) = Base.bind(c.channel, task)
 Base.take!(c::SignalChannel) = Base.take!(c.channel)
-Base.close(c::SignalChannel, excp::Exception = Base.closed_exception()) =
+Base.close(c::SignalChannel, excp::Exception=Base.closed_exception()) =
     Base.close(c.channel, excp)
 Base.isopen(c::SignalChannel) = Base.isopen(c.channel)
 Base.close_chnl_on_taskdone(t::Task, c::SignalChannel) =
@@ -171,6 +203,7 @@ Base.close_chnl_on_taskdone(t::Task, c::SignalChannel) =
 Base.isready(c::SignalChannel) = Base.isready(c.channel)
 Base.isempty(c::SignalChannel) = Base.isempty(c.channel)
 Base.n_avail(c::SignalChannel) = Base.n_avail(c.channel)
+Base.isfull(c::SignalChannel) = Base.isfull(c.channel)
 
 Base.lock(c::SignalChannel) = Base.lock(c.channel)
 Base.lock(f, c::SignalChannel) = Base.lock(f, c.channel)
@@ -179,7 +212,7 @@ Base.trylock(c::SignalChannel) = Base.trylock(c.channel)
 Base.wait(c::SignalChannel) = Base.wait(c.channel)
 Base.eltype(c::SignalChannel) = Base.eltype(c.channel)
 Base.show(io::IO, c::SignalChannel) = Base.show(io, c.channel)
-Base.iterate(c::SignalChannel, state = nothing) = Base.iterate(c.channel, state)
+Base.iterate(c::SignalChannel, state=nothing) = Base.iterate(c.channel, state)
 Base.IteratorSize(::Type{<:SignalChannel}) = Base.SizeUnknown()
 
 """

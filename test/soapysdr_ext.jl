@@ -33,8 +33,9 @@ if Base.find_package("SoapySDR") !== nothing
                 using SoapyLoopback_jll
 
                 @testset "RX stream_data test" begin
-                    # Note: SoapyLoopback only supports RX, not TX (writeStream returns NOT_SUPPORTED)
-                    # This test verifies that stream_data works with SoapySDR devices for receiving
+                    # Note: SoapyLoopback returns TIMEOUT on readStream, but we still push buffers
+                    # on error to maintain a steady stream (important for applications like GNSS).
+                    # The buffers will contain stale/uninitialized data, but that's acceptable.
 
                     sample_rate = 1e6 * Unitful.Hz
                     center_freq = 1e9 * Unitful.Hz
@@ -53,7 +54,7 @@ if Base.find_package("SoapySDR") !== nothing
                         rx_stream = SoapySDR.Stream(ComplexF32, rx)
 
                         # Test stream_data with integer end condition
-                        data_channel = stream_data(rx_stream, num_samples_to_read; leadin_buffers=0)
+                        data_channel, warning_channel = stream_data(rx_stream, num_samples_to_read; leadin_buffers=0)
 
                         # Collect received data
                         received_samples = ComplexF32[]
@@ -61,7 +62,10 @@ if Base.find_package("SoapySDR") !== nothing
                             append!(received_samples, vec(data))
                         end
 
-                        # Verify we received the expected amount of data
+                        # Verify warning channel is closed after data channel is exhausted
+                        @test !isopen(warning_channel)
+
+                        # Verify we received the expected amount of data (even if it contains stale data due to timeouts)
                         @test length(received_samples) >= num_samples_to_read
                     end
                 end
@@ -89,7 +93,7 @@ if Base.find_package("SoapySDR") !== nothing
 
                         # Start TX task (will encounter NOT_SUPPORTED but should handle gracefully)
                         println("Note: SoapyLoopback doesn't support actual TX (writeStream returns NOT_SUPPORTED)")
-                        tx_task = stream_data(tx_stream, tx_channel)
+                        warning_channel = stream_data(tx_stream, tx_channel)
 
                         # Send some data using the convenience method
                         buffer = zeros(ComplexF32, tx_stream.mtu, 1)
@@ -97,7 +101,12 @@ if Base.find_package("SoapySDR") !== nothing
                         put!(tx_channel, buffer)  # Tests the new AbstractMatrix put! method
 
                         close(tx_channel)
-                        wait(tx_task)
+
+                        # Wait for transmission to complete by draining the warning channel
+                        for _ in warning_channel end
+
+                        # Verify warning channel is closed after iteration completes
+                        @test !isopen(warning_channel)
 
                         # Test passes if no crash occurs (errors are logged as warnings)
                         @test true
@@ -107,22 +116,6 @@ if Base.find_package("SoapySDR") !== nothing
         end
 
         @testset "Method signatures" begin
-            # Test that the extension defines generate_stream for SoapySDR.Stream
-            # Note: We need to check with type parameters for the stream
-            found_generate_stream = false
-            for m in methods(SignalChannels.generate_stream)
-                sig = m.sig
-                if sig isa UnionAll
-                    sig = sig.body
-                end
-                # Check if this is the method we're looking for
-                if sig <: Tuple{typeof(SignalChannels.generate_stream),Function,SoapySDR.Stream}
-                    found_generate_stream = true
-                    break
-                end
-            end
-            @test found_generate_stream
-
             # Test that stream_data accepts Union{Event, Integer} as end condition
             # The actual signature uses Union{Base.Event, Integer}, so we check for that
             found_stream_data = false

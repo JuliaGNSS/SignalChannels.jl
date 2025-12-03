@@ -83,7 +83,9 @@ end
 Returns a `SignalChannel` that generates buffers using the provided function.
 
 # Arguments
-- `gen_buff!::Function`: Function that fills a buffer. Should return `true` to continue, `false` to stop
+- `gen_buff!::Function`: Function that fills a buffer. Should return:
+  - `true` to push the buffer and continue
+  - `false` to stop streaming
 - `num_samples::Integer`: Number of samples per buffer
 - `num_antenna_channels::Integer`: Number of antenna channels (default: 1)
 - `wrapper::Function`: Optional wrapper function for setup/teardown (default: identity)
@@ -111,12 +113,23 @@ function generate_stream(gen_buff!::Function, num_samples::Integer, num_antenna_
                          T = ComplexF32)
     return spawn_signal_channel_thread(;T, num_samples, num_antenna_channels, buffers_in_flight) do c
         wrapper() do
-            # Always create a fixed-size matrix buffer
-            buff = FixedSizeMatrixDefault{T}(undef, num_samples, num_antenna_channels)
+            # Pre-allocate a pool of buffers to avoid allocations during streaming.
+            # We need buffers_in_flight + 1 buffers: one for each slot in the channel
+            # plus one for the current write operation.
+            num_buffers = buffers_in_flight + 1
+            buffer_pool = [FixedSizeMatrixDefault{T}(undef, num_samples, num_antenna_channels) for _ in 1:num_buffers]
+            buffer_idx = 1
 
             # Keep on generating buffers until `gen_buff!()` returns `false`.
-            while gen_buff!(buff)
-                put!(c, copy(buff))
+            while true
+                buff = buffer_pool[buffer_idx]
+                result = gen_buff!(buff)
+
+                result === false && break
+
+                # Push the buffer and rotate to the next one
+                put!(c, buff)
+                buffer_idx = mod1(buffer_idx + 1, num_buffers)
             end
         end
     end

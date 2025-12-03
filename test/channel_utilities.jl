@@ -1,7 +1,7 @@
 module ChannelUtilitiesTest
 
 using Test: @test, @testset, @test_throws
-using SignalChannels: SignalChannel, consume_channel, consume_channel_with_warnings, tee, rechunk, write_to_file, read_from_file
+using SignalChannels: SignalChannel, consume_channel, tee, rechunk, write_to_file, read_from_file
 using FixedSizeArrays: FixedSizeMatrixDefault
 
 @testset "Channel Utilities" begin
@@ -42,52 +42,6 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
         wait(task)
         @test results == [ComplexF32(1, 0), ComplexF32(2, 0), ComplexF32(3, 0)]
-    end
-
-    @testset "consume_channel_with_warnings" begin
-        # Create a test channel
-        test_chan = Channel{Int}(10)
-
-        # Track warnings captured
-        captured_warnings_history = Vector{String}[]
-
-        # Use consume_channel_with_warnings to capture warnings
-        consume_task = @async begin
-            consume_channel_with_warnings(test_chan; max_warnings=20) do data, warnings
-                push!(captured_warnings_history, copy(warnings))
-            end
-        end
-
-        # Give time for redirect_stderr to take effect
-        sleep(0.1)
-
-        # Task that generates warnings
-        warning_task = @async begin
-            for i in 1:3
-                @warn "Processing batch $i"
-                flush(stderr)
-                sleep(0.02)
-                put!(test_chan, i)
-            end
-            close(test_chan)
-        end
-
-        # Wait for completion
-        wait(warning_task)
-        wait(consume_task)
-
-        # Verify warnings were captured
-        @test !isempty(captured_warnings_history)
-
-        # Get the final accumulated warnings
-        final_warnings = captured_warnings_history[end]
-
-        @test any(w -> contains(w, "Processing batch 1"), final_warnings)
-        @test any(w -> contains(w, "Processing batch 2"), final_warnings)
-        @test any(w -> contains(w, "Processing batch 3"), final_warnings)
-
-        # Verify we have 3 warnings
-        @test length(final_warnings) >= 3
     end
 
     @testset "tee" begin

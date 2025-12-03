@@ -1,8 +1,8 @@
 module SignalChannels
 
 export SignalChannel,
+    StreamWarning,
     consume_channel,
-    consume_channel_with_warnings,
     tee,
     rechunk,
     write_to_file,
