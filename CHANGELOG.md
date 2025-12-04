@@ -1,5 +1,31 @@
 # Changelog
 
+# [2.0.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v1.0.2...v2.0.0) (2025-12-04)
+
+
+* feat!: replace [@warn](https://github.com/warn) in hot loops with warning channel ([44794e0](https://github.com/JuliaGNSS/SignalChannels.jl/commit/44794e062622f1684982e315f305c0fb18fa0233))
+
+
+### BREAKING CHANGES
+
+* stream_data now returns a tuple instead of a single value.
+- RX stream_data returns (signal_channel, warning_channel) instead of signal_channel
+- TX stream_data returns (task, warning_channel) instead of task
+
+Changes:
+- Add StreamWarning struct to hold warning info (type, time, error code)
+- Add push_warning! helper that silently drops if channel is full
+- Update periodogram_liveplot to accept optional warning_channel
+- Remove consume_channel_with_warnings (no longer needed)
+- Update convenience functions and tests for new API
+
+This avoids the performance overhead of @warn in the hot read/write
+loops while still making warnings accessible to callers.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
 ## [1.0.2](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v1.0.1...v1.0.2) (2025-12-01)
 
 
