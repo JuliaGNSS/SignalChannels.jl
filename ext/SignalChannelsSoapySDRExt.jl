@@ -86,11 +86,6 @@ function apply_config!(channel::SoapySDR.Channel, config::SignalChannels.SDRChan
     return channel
 end
 
-# Helper for turning a matrix into a tuple of views, for use with the SoapySDR API.
-function split_matrix(m::AbstractMatrix{T}) where {T<:Number}
-    return [view(m, :, idx) for idx = 1:size(m, 2)]
-end
-
 # Helper for formatting time in a human-readable way
 function format_time(seconds::Real)
     if seconds < 1e-3
@@ -114,17 +109,26 @@ end
 
 # Helper to read a single buffer from the stream using the direct C API.
 # Returns the number of samples read, or a negative error code.
-function read_buffer!(stream::SoapySDR.Stream, buff::AbstractMatrix, timeout_us::Integer)
-    buffers = split_matrix(buff)
-    samples_to_read = length(first(buffers))
-    GC.@preserve buffers begin
-        buff_ptrs = pointer(map(b -> pointer(b, 1), buffers))
-        out_flags = Ref{Cint}()
-        timens = Ref{Clonglong}()
+# Uses pre-allocated buffers to avoid allocations in the hot path.
+function read_buffer!(
+    stream::SoapySDR.Stream,
+    buff::AbstractMatrix{T},
+    timeout_us::Integer,
+    buff_ptrs::Vector{Ptr{T}},
+    out_flags::Base.RefValue{Cint},
+    timens::Base.RefValue{Clonglong},
+) where {T}
+    samples_to_read = size(buff, 1)
+    nchannels = size(buff, 2)
+    # Update pointers for current buffer columns
+    for i in 1:nchannels
+        buff_ptrs[i] = pointer(buff, (i - 1) * samples_to_read + 1)
+    end
+    GC.@preserve buff begin
         return SoapySDR.SoapySDRDevice_readStream(
             stream.d,
             stream,
-            buff_ptrs,
+            pointer(buff_ptrs),
             samples_to_read,
             out_flags,
             timens,
@@ -295,12 +299,17 @@ function SignalChannels.stream_data(
             total_samples_read = 0
             buff_idx = 0
 
+            # Pre-allocate buffers for read_buffer! to avoid allocations in the hot path
+            buff_ptrs = Vector{Ptr{T}}(undef, nchannels)
+            out_flags = Ref{Cint}()
+            timens = Ref{Clonglong}()
+
             SoapySDR.activate!(stream) do
                 timeout_us = Int(uconvert(u"μs", 0.9u"s").val)
 
                 # Leadin - discard initial buffers
                 for _ in 1:leadin_buffers
-                    read_buffer!(stream, buffer_pool[1], timeout_us)
+                    read_buffer!(stream, buffer_pool[1], timeout_us, buff_ptrs, out_flags, timens)
                 end
 
                 while true
@@ -315,7 +324,7 @@ function SignalChannels.stream_data(
                     isopen(signal_channel) || break
 
                     buff = buffer_pool[buffer_idx]
-                    nread = read_buffer!(stream, buff, timeout_us)
+                    nread = read_buffer!(stream, buff, timeout_us, buff_ptrs, out_flags, timens)
 
                     if nread < 0
                         expected_sample_seconds = total_samples_read / uconvert(u"Hz", sample_rate).val
@@ -471,6 +480,11 @@ function SignalChannels.stream_data(
             # Create stream with all configured channels
             stream = SoapySDR.Stream(T, tx_channels)
             total_samples_written = 0
+            nchannels = stream.nchannels
+
+            # Pre-allocate buffers to avoid allocations in the hot path
+            buff_ptrs = Vector{Ptr{T}}(undef, nchannels)
+            out_flags = Ref{Cint}(0)
 
             SoapySDR.activate!(stream) do
                 timeout_us = Int(uconvert(u"μs", 0.9u"s").val)
@@ -481,17 +495,19 @@ function SignalChannels.stream_data(
                         break
                     end
 
-                    buffers = split_matrix(buff)
-                    samples_to_write = length(first(buffers))
+                    samples_to_write = size(buff, 1)
                     total_nwritten = 0
 
-                    GC.@preserve buffers while total_nwritten < samples_to_write
-                        buff_ptrs = pointer(map(b -> pointer(b, total_nwritten + 1), buffers))
-                        out_flags = Ref{Cint}(0)
+                    GC.@preserve buff while total_nwritten < samples_to_write
+                        # Update pointers for current write position
+                        for i in 1:nchannels
+                            buff_ptrs[i] = pointer(buff, (i - 1) * samples_to_write + total_nwritten + 1)
+                        end
+                        out_flags[] = Cint(0)
                         nwritten = SoapySDR.SoapySDRDevice_writeStream(
                             stream.d,
                             stream,
-                            buff_ptrs,
+                            pointer(buff_ptrs),
                             samples_to_write - total_nwritten,
                             out_flags,
                             0,
