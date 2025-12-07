@@ -74,6 +74,7 @@ function membuffer(in::AbstractChannel, max_size::Int = 16)
         close(out)
     end
     bind(out, task)
+    bind(in, task)  # Propagate errors upstream
     return out
 end
 

@@ -9,6 +9,8 @@ jobs:
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    env:
+      JULIA_NUM_THREADS: auto
     strategy:
       matrix:
         version:
