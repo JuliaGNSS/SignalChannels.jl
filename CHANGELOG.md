@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.1](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.0...v3.0.1) (2025-12-07)
+
+
+### Bug Fixes
+
+* reduce allocations in SoapySDR stream hot paths ([d971224](https://github.com/JuliaGNSS/SignalChannels.jl/commit/d9712241ce711745577e2296eba12a1fa8e70e6f))
+
 # [3.0.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v2.0.0...v3.0.0) (2025-12-07)
 
 # [2.0.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v1.0.2...v2.0.0) (2025-12-04)
