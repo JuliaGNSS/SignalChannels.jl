@@ -1,5 +1,7 @@
 # Changelog
 
+# [3.0.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v2.0.0...v3.0.0) (2025-12-07)
+
 # [2.0.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v1.0.2...v2.0.0) (2025-12-04)
 
 
