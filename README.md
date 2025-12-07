@@ -101,36 +101,35 @@ buffered = membuffer(input_chan, 32)  # Buffer up to 32 matrices
 
 ### SoapySDR Integration (Extension)
 
-When you have SoapySDR.jl installed, SignalChannels automatically loads additional functionality for streaming from SDR hardware:
+When you have SoapySDR.jl installed, SignalChannels automatically loads additional functionality for streaming from SDR hardware.
+
+**Note:** The SoapySDR extension requires Julia to be started with multiple threads (`julia --threads=auto` or set `JULIA_NUM_THREADS=auto`).
 
 ```julia
 using SignalChannels
 using SoapySDR  # Extension loads automatically
+using Unitful
 
-# Open SDR device
-Device(first(Devices())) do dev
-    # Configure receiver
-    dev.rx[1].sample_rate = 2.5e6u"Hz"
-    dev.rx[1].frequency = 1.5e9u"Hz"
-    dev.rx[1].gain = 40u"dB"
+# Configure SDR channel with SDRChannelConfig
+config = SDRChannelConfig(
+    sample_rate = 2.5e6u"Hz",
+    frequency = 1.5e9u"Hz",
+    gain = 40u"dB"
+)
 
-    # Create stream
-    stream = SoapySDR.Stream(ComplexF32, dev.rx[1])
+# Stream a fixed number of samples
+data_channel, warning_channel = stream_data(first(Devices()), config, 10_000_000)
 
-    # Stream data from SDR
-    data_channel = stream_data(stream, 10_000_000)  # Read 10M samples
+# Or use an Event to control streaming duration
+stop_event = Base.Event()
+data_channel, warning_channel = stream_data(first(Devices()), config, stop_event)
 
-    # Or use an Event to control streaming
-    stop_event = Base.Event()
-    data_channel = stream_data(stream, stop_event)
-
-    # Process data
-    for data in data_channel
-        # Process SDR data
-        if should_stop
-            notify(stop_event)
-            break
-        end
+# Process data
+for data in data_channel
+    # Process SDR data
+    if should_stop
+        notify(stop_event)
+        break
     end
 end
 ```
@@ -159,8 +158,10 @@ sdr_record_to_file(
 ```
 
 The extension provides:
-- `stream_data(stream, end_condition; leadin_buffers=16)` - Stream data from SoapySDR devices
-- `generate_stream(f, stream::SoapySDR.Stream)` - Convenience method for SoapySDR streams
+- `SDRChannelConfig` - Configuration struct for SDR channels (sample_rate, frequency, gain, bandwidth, antenna)
+- `TxStats` - Statistics struct for TX streams (total_samples transmitted)
+- `stream_data(dev_args, config, end_condition)` - Stream RX data from SoapySDR devices (returns data and warning channels)
+- `stream_data(dev_args, config, input_channel)` - Stream TX data to SoapySDR devices (returns stats and warning channels)
 - `sdr_periodogram_liveplot(...)` - Live spectrum analysis with real-time plotting
 - `sdr_record_to_file(path, ...)` - One-line SDR recording to files
 

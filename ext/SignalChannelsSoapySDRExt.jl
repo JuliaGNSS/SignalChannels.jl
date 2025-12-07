@@ -6,6 +6,86 @@ using Unitful
 using FixedSizeArrays: FixedSizeMatrixDefault
 using DSP: hamming
 
+# Helper to check if a value is within any of the given ranges
+function in_any_range(value, ranges)
+    for r in ranges
+        if value in r
+            return true
+        end
+    end
+    return false
+end
+
+# Helper to format ranges for error messages
+function format_ranges(ranges)
+    return join(string.(ranges), ", ")
+end
+
+# Helper to validate SDRChannelConfig against a SoapySDR channel's capabilities
+function validate_config!(channel::SoapySDR.Channel, config::SignalChannels.SDRChannelConfig, channel_idx::Int)
+    direction = channel.direction == SoapySDR.SOAPY_SDR_RX ? "RX" : "TX"
+
+    # Validate sample rate
+    sr_ranges = SoapySDR.sample_rate_ranges(channel)
+    if !isempty(sr_ranges) && !in_any_range(config.sample_rate, sr_ranges)
+        error("$direction channel $channel_idx: sample_rate $(config.sample_rate) is outside supported range(s): $(format_ranges(sr_ranges))")
+    end
+
+    # Validate frequency
+    freq_ranges = SoapySDR.frequency_ranges(channel)
+    if !isempty(freq_ranges) && !in_any_range(config.frequency, freq_ranges)
+        error("$direction channel $channel_idx: frequency $(config.frequency) is outside supported range(s): $(format_ranges(freq_ranges))")
+    end
+
+    # Validate bandwidth (use sample_rate if bandwidth not specified)
+    bw = isnothing(config.bandwidth) ? config.sample_rate : config.bandwidth
+    bw_ranges = SoapySDR.bandwidth_ranges(channel)
+    if !isempty(bw_ranges) && !in_any_range(bw, bw_ranges)
+        error("$direction channel $channel_idx: bandwidth $bw is outside supported range(s): $(format_ranges(bw_ranges))")
+    end
+
+    # Validate gain (if specified)
+    # Note: We compare using ustrip to avoid type mismatch issues with Gain types
+    # For Gain types (like 30u"dB"), ustrip(gain) returns the numeric value directly
+    if !isnothing(config.gain)
+        gain_range = SoapySDR.gainrange(channel)
+        gain_val = ustrip(config.gain)
+        gain_min = ustrip(first(gain_range))
+        gain_max = ustrip(last(gain_range))
+        if gain_val < gain_min || gain_val > gain_max
+            error("$direction channel $channel_idx: gain $(config.gain) is outside supported range: $gain_range")
+        end
+    end
+
+    return nothing
+end
+
+# Helper to apply SDRChannelConfig to a SoapySDR channel (works for both RX and TX)
+function apply_config!(channel::SoapySDR.Channel, config::SignalChannels.SDRChannelConfig; channel_idx::Int=1)
+    # Validate config against channel capabilities before applying
+    validate_config!(channel, config, channel_idx)
+
+    channel.sample_rate = config.sample_rate
+    channel.bandwidth = isnothing(config.bandwidth) ? config.sample_rate : config.bandwidth
+    channel.frequency = config.frequency
+
+    if isnothing(config.gain)
+        channel.gain_mode = true
+    else
+        channel.gain = config.gain
+    end
+
+    if !isnothing(config.antenna)
+        channel.antenna = config.antenna
+    end
+
+    if !isnothing(config.frequency_correction)
+        channel.frequency_correction = config.frequency_correction
+    end
+
+    return channel
+end
+
 # Helper for turning a matrix into a tuple of views, for use with the SoapySDR API.
 function split_matrix(m::AbstractMatrix{T}) where {T<:Number}
     return [view(m, :, idx) for idx = 1:size(m, 2)]
@@ -32,122 +112,212 @@ function push_warning!(channel::Channel{SignalChannels.StreamWarning}, warning::
     return nothing
 end
 
+# Helper to read a single buffer from the stream using the direct C API.
+# Returns the number of samples read, or a negative error code.
+function read_buffer!(stream::SoapySDR.Stream, buff::AbstractMatrix, timeout_us::Integer)
+    buffers = split_matrix(buff)
+    samples_to_read = length(first(buffers))
+    GC.@preserve buffers begin
+        buff_ptrs = pointer(map(b -> pointer(b, 1), buffers))
+        out_flags = Ref{Cint}()
+        timens = Ref{Clonglong}()
+        return SoapySDR.SoapySDRDevice_readStream(
+            stream.d,
+            stream,
+            buff_ptrs,
+            samples_to_read,
+            out_flags,
+            timens,
+            timeout_us,
+        )
+    end
+end
+
 """
-    stream_data(s_rx::SoapySDR.Stream{T}, end_condition::Union{Integer,Base.Event}; leadin_buffers=16, warning_buffer_size=16, buffers_in_flight=1) where {T <: Number}
+    stream_data([T=ComplexF32], dev_args, config::SDRChannelConfig, end_condition::Union{Integer,Base.Event}; leadin_buffers=16, warning_buffer_size=16, buffer_time=1u"s")
+    stream_data([T=ComplexF32], dev_args, configs::Tuple{SDRChannelConfig,...}, end_condition::Union{Integer,Base.Event}; leadin_buffers=16, warning_buffer_size=16, buffer_time=1u"s")
 
-Returns a tuple of `(SignalChannel, Channel{StreamWarning})` for streaming data and receiving warnings.
-The signal channel will yield buffers of data to be processed of size `s_rx.mtu`.
-Starts an asynchronous task that reads from the stream until the requested number of samples
-are read, or the given `Event` is notified.
+Creates an SDR device, configures it, and streams RX data.
 
-This function uses direct C API calls for better performance. Errors (overflow, timeout, etc.)
-are pushed to the warning channel with timing information, rather than being logged directly.
-
-## Error handling
-
-On read errors (overflow, timeout, etc.), the buffer is still pushed to the channel even though
-it may contain partial new data mixed with stale data from the previous read. This is intentional:
-applications like GNSS receivers rely on a steady stream of samples and can often recover from
-corrupted data, but gaps in the stream cause them to lose signal tracking.
-
-Warnings are pushed to the warning channel without blocking. If the warning channel is full,
-the warning is silently dropped to avoid impacting real-time streaming performance.
+The device lifecycle is managed internally - the device stays open as long as the streaming task
+is running. When the output channel is closed (e.g., due to a downstream error), the streaming
+task detects this, stops reading, and then closes the device cleanly.
 
 # Arguments
-- `s_rx::SoapySDR.Stream{T}`: SoapySDR receive stream
+- `T`: Stream format type (default: `ComplexF32`). Other options include `Complex{Int16}`, etc.
+- `dev_args`: Device arguments (e.g., from `SoapySDR.Devices()[1]`)
+- `config`: Single `SDRChannelConfig` for single-channel streaming
+- `configs`: Tuple of `SDRChannelConfig` for multi-channel streaming (one per antenna channel)
 - `end_condition::Union{Integer,Base.Event}`: Either total number of samples to read, or an Event to signal stop
 - `leadin_buffers::Integer`: Number of initial buffers to discard (default: 16)
 - `warning_buffer_size::Integer`: Size of the warning channel buffer (default: 16)
-- `buffers_in_flight::Integer`: Number of buffers that can be in flight (default: 1)
+- `buffer_time`: Time duration of data to buffer (default: `1u"s"`). Provides headroom for downstream processing delays.
 
 # Returns
-- `Tuple{SignalChannel{T}, Channel{StreamWarning}}`: Tuple of (signal channel, warning channel)
+- `Tuple{SignalChannel{T}, Channel{StreamWarning}}`: Tuple of (signal channel, warning channel). The MTU can be accessed via `signal_channel.num_samples`.
 
 # Examples
 ```julia
 using SignalChannels
 using SoapySDR
 
-Device(args) do dev
-    stream = SoapySDR.Stream(ComplexF32, dev.rx[1])
+# Single channel streaming (defaults to ComplexF32)
+config = SDRChannelConfig(
+    sample_rate = 5e6u"Hz",
+    frequency = 1.57542e9u"Hz",
+    gain = 50u"dB"
+)
+data_channel, warning_channel = stream_data(first(Devices()), config, 10_000_000)
 
-    # Read 10 million samples
-    data_channel, warning_channel = stream_data(stream, 10_000_000)
+# Multi-channel streaming with different frequencies
+configs = (
+    SDRChannelConfig(sample_rate=5e6u"Hz", frequency=1.57542e9u"Hz"),
+    SDRChannelConfig(sample_rate=5e6u"Hz", frequency=1.22760e9u"Hz"),
+)
+data_channel, warning_channel = stream_data(first(Devices()), configs, 10_000_000)
 
-    # Process data in one task
-    @async for data in data_channel
-        # Process data
-    end
+# Stream with explicit Complex{Int16} format
+data_channel, warning_channel = stream_data(
+    Complex{Int16},
+    first(Devices()),
+    config,
+    10_000_000
+)
 
-    # Monitor warnings in another task
-    @async for warning in warning_channel
-        @warn "Stream warning" type=warning.type time=warning.time_str
-    end
+# Access MTU if needed
+mtu = data_channel.num_samples
+
+# Process data - if an error occurs here, the device closes cleanly
+for data in data_channel
+    # Process data (each chunk has `mtu` samples)
 end
 ```
 """
-function SignalChannels.stream_data(s_rx::SoapySDR.Stream{T}, end_condition::Union{Integer,Base.Event};
+function SignalChannels.stream_data(
+    dev_args,
+    config::SignalChannels.SDRChannelConfig,
+    end_condition::Union{Integer,Base.Event};
     leadin_buffers::Integer=16,
     warning_buffer_size::Integer=16,
-    buffers_in_flight::Integer=1) where {T<:Number}
+    buffer_time::Unitful.Time=1u"s",
+)
+    # Default to ComplexF32 for performance (avoids runtime type inference)
+    return SignalChannels.stream_data(
+        ComplexF32, dev_args, (config,), end_condition;
+        leadin_buffers, warning_buffer_size, buffer_time
+    )
+end
 
-    # Create channels
-    signal_channel = SignalChannel{T}(s_rx.mtu, s_rx.nchannels, buffers_in_flight)
+function SignalChannels.stream_data(
+    dev_args,
+    configs::NTuple{N,SignalChannels.SDRChannelConfig},
+    end_condition::Union{Integer,Base.Event};
+    leadin_buffers::Integer=16,
+    warning_buffer_size::Integer=16,
+    buffer_time::Unitful.Time=1u"s",
+) where {N}
+    # Default to ComplexF32 for performance (avoids runtime type inference)
+    return SignalChannels.stream_data(
+        ComplexF32, dev_args, configs, end_condition;
+        leadin_buffers, warning_buffer_size, buffer_time
+    )
+end
+
+function SignalChannels.stream_data(
+    ::Type{T},
+    dev_args,
+    config::SignalChannels.SDRChannelConfig,
+    end_condition::Union{Integer,Base.Event};
+    leadin_buffers::Integer=16,
+    warning_buffer_size::Integer=16,
+    buffer_time::Unitful.Time=1u"s",
+) where {T<:Number}
+    return SignalChannels.stream_data(
+        T, dev_args, (config,), end_condition;
+        leadin_buffers, warning_buffer_size, buffer_time
+    )
+end
+
+function SignalChannels.stream_data(
+    ::Type{T},
+    dev_args,
+    configs::NTuple{N,SignalChannels.SDRChannelConfig},
+    end_condition::Union{Integer,Base.Event};
+    leadin_buffers::Integer=16,
+    warning_buffer_size::Integer=16,
+    buffer_time::Unitful.Time=1u"s",
+) where {T<:Number,N}
+    if Threads.nthreads() < 2
+        error("stream_data requires Julia to be started with multiple threads. " *
+              "Start Julia with `julia --threads=auto` or set JULIA_NUM_THREADS environment variable.")
+    end
+
+    # Validate all configs have the same sample_rate (required for multi-channel streams)
+    sample_rate = first(configs).sample_rate
+    for (i, config) in enumerate(configs)
+        if config.sample_rate != sample_rate
+            error("All SDRChannelConfigs must have the same sample_rate for multi-channel RX. " *
+                  "Config 1 has $(sample_rate), config $i has $(config.sample_rate)")
+        end
+    end
+
+    setup_channel = Channel{SignalChannel{T}}(1)
     warning_channel = Channel{SignalChannels.StreamWarning}(warning_buffer_size)
 
-    sample_rate = first(s_rx.d.rx).sample_rate
-
     task = Threads.@spawn begin
-        # Pre-allocate a pool of buffers to avoid allocations during streaming.
-        # We need buffers_in_flight + 1 buffers: one for each slot in the channel
-        # plus one for the current write operation.
-        num_buffers = buffers_in_flight + 1
-        buffer_pool = [FixedSizeMatrixDefault{T}(undef, s_rx.mtu, s_rx.nchannels) for _ in 1:num_buffers]
-        buffer_idx = 1
-        total_samples_read = 0
-        buff_idx = 0
-
-        SoapySDR.activate!(s_rx) do
-            # Let the stream come online for a bit (leadin) - reuse first buffer from pool
-            for _ in 1:leadin_buffers
-                read!(s_rx, split_matrix(buffer_pool[1]))
+        SoapySDR.Device(dev_args) do dev
+            # Configure each RX channel with its config
+            rx_channels = [dev.rx[i] for i in 1:N]
+            for (i, (rx, config)) in enumerate(zip(rx_channels, configs))
+                apply_config!(rx, config; channel_idx=i)
             end
 
-            # Read streams until we read the number of samples, or the given event is triggered
-            timeout_us = uconvert(u"μs", 0.9u"s").val
+            # Create stream with all configured channels (SoapySDR.Stream expects AbstractVector)
+            stream = SoapySDR.Stream(T, rx_channels)
+            mtu = stream.mtu
+            nchannels = stream.nchannels
 
-            while true
-                # Check end condition
-                if isa(end_condition, Integer)
-                    buff_idx * s_rx.mtu >= end_condition && break
-                else
-                    end_condition.set && break
+            # Calculate number of buffers from buffer_time
+            # buffers_in_flight = ceil(buffer_time * sample_rate / mtu)
+            buffers_in_flight = ceil(Int, upreferred(buffer_time * sample_rate) / mtu)
+
+            # Create the actual signal channel now that we know the MTU
+            signal_channel = SignalChannel{T}(mtu, nchannels, buffers_in_flight)
+
+            # Send the channel back to the caller
+            put!(setup_channel, signal_channel)
+            close(setup_channel)
+
+            # Pre-allocate buffer pool with zeros (not undef) to avoid NaN/garbage if SDR doesn't fully fill buffers
+            num_buffers = buffers_in_flight + 1
+            buffer_pool = [FixedSizeMatrixDefault{T}(fill(zero(T), mtu, nchannels)) for _ in 1:num_buffers]
+            buffer_idx = 1
+            total_samples_read = 0
+            buff_idx = 0
+
+            SoapySDR.activate!(stream) do
+                timeout_us = Int(uconvert(u"μs", 0.9u"s").val)
+
+                # Leadin - discard initial buffers
+                for _ in 1:leadin_buffers
+                    read_buffer!(stream, buffer_pool[1], timeout_us)
                 end
 
-                buff = buffer_pool[buffer_idx]
+                while true
+                    # Check end condition
+                    if isa(end_condition, Integer)
+                        buff_idx * mtu >= end_condition && break
+                    else
+                        end_condition.set && break
+                    end
 
-                # Read directly using the C API to avoid exception overhead
-                buffers = split_matrix(buff)
-                samples_to_read = length(first(buffers))
-                total_nread = 0
+                    # Check if downstream closed the channel (e.g., due to an error)
+                    isopen(signal_channel) || break
 
-                GC.@preserve buffers while total_nread < samples_to_read
-                    buff_ptrs = pointer(map(b -> pointer(b, total_nread + 1), buffers))
-                    out_flags = Ref{Cint}()
-                    timens = Ref{Clonglong}()
-                    nread = SoapySDR.SoapySDRDevice_readStream(
-                        s_rx.d,
-                        s_rx,
-                        buff_ptrs,
-                        samples_to_read - total_nread,
-                        out_flags,
-                        timens,
-                        timeout_us,
-                    )
+                    buff = buffer_pool[buffer_idx]
+                    nread = read_buffer!(stream, buff, timeout_us)
 
-                    # Check for errors in the return value
                     if nread < 0
-                        # Calculate expected sample time based on sample rate
                         expected_sample_seconds = total_samples_read / uconvert(u"Hz", sample_rate).val
                         time_str = format_time(expected_sample_seconds)
 
@@ -158,156 +328,221 @@ function SignalChannels.stream_data(s_rx::SoapySDR.Stream{T}, end_condition::Uni
                         else
                             push_warning!(warning_channel, SignalChannels.StreamWarning(:error, time_str, Int(nread), SoapySDR.error_to_string(nread)))
                         end
-                        # On error, we still push the buffer even though it may contain partial new data
-                        # mixed with stale data from the previous read. This is intentional: applications
-                        # like GNSS receivers rely on a steady stream of samples and can often recover
-                        # from corrupted data, but gaps in the stream cause them to lose signal tracking.
-                        break
-                    else
-                        total_nread += nread
-                        total_samples_read += nread
+                        # An error leaves corrupted data (either zeros or outdated samples) inside the buffer
+                        # Let's not put it onto the pipe
+                        continue
                     end
+                    total_samples_read += nread
+
+                    put!(signal_channel, buff)
+                    buffer_idx = mod1(buffer_idx + 1, num_buffers)
+                    buff_idx += 1
                 end
-
-                # Push the buffer and rotate to the next one
-                put!(signal_channel, buff)
-                buffer_idx = mod1(buffer_idx + 1, num_buffers)
-                buff_idx += 1
             end
+            close(signal_channel)
+            close(warning_channel)
         end
-
-        close(signal_channel)
-        close(warning_channel)
     end
 
-    bind(signal_channel, task)
+    bind(setup_channel, task)
     bind(warning_channel, task)
+
+    # Wait for the setup to complete and get the signal channel
+    signal_channel = take!(setup_channel)
+
+    bind(signal_channel, task)
 
     return (signal_channel, warning_channel)
 end
 
 """
-    stream_data(s_tx::SoapySDR.Stream{T}, in::SignalChannel{T}; warning_buffer_size=16) where {T <: Number}
+    stream_data(dev_args, config::SDRChannelConfig, in::SignalChannel{T}; warning_buffer_size=16, stats_buffer_size=1000) where {T}
+    stream_data(dev_args, configs::Tuple{SDRChannelConfig,...}, in::SignalChannel{T}; warning_buffer_size=16, stats_buffer_size=1000) where {T}
 
-Feed data from a `SignalChannel` out onto the airwaves via a given `SoapySDR.Stream`.
-We suggest using `rechunk()` to convert to `s_tx.mtu`-sized buffers for maximum efficiency.
+Opens an SDR device, configures TX channel(s), and transmits data from a SignalChannel.
 
-This function uses direct C API calls for better performance. Errors (underflow, timeout, etc.)
-are pushed to the warning channel with timing information, rather than being logged directly.
-
-The transmission runs asynchronously in a spawned task. The warning channel is bound to the task,
-so it will be closed automatically when the task completes (and any exceptions will be propagated).
-
-Warnings are pushed to the warning channel without blocking. If the warning channel is full,
-the warning is silently dropped to avoid impacting real-time streaming performance.
+The device lifecycle is managed internally - the device stays open as long as the streaming task
+is running. When the input channel is closed, the streaming task completes transmission,
+then closes the device cleanly.
 
 # Arguments
-- `s_tx::SoapySDR.Stream{T}`: SoapySDR transmit stream
-- `in::SignalChannel{T}`: Input channel containing data to transmit
+- `dev_args`: Device arguments (e.g., from `SoapySDR.Devices()[1]`)
+- `config`: Single `SDRChannelConfig` applied to all TX channels
+- `configs`: Tuple of `SDRChannelConfig` for multi-channel streaming (one per antenna channel)
+- `in`: Input `SignalChannel` containing data to transmit (matrix with one column per antenna channel)
 - `warning_buffer_size::Integer`: Size of the warning channel buffer (default: 16)
+- `stats_buffer_size::Integer`: Size of the stats channel buffer (default: 1000)
 
 # Returns
-- `Channel{StreamWarning}`: Warning channel (closes when transmission completes)
+- `Tuple{Channel{TxStats}, Channel{StreamWarning}}`: Tuple of (stats channel, warning channel).
+  The stats channel receives `TxStats` updates after each buffer is transmitted.
+  Both channels close when transmission completes.
 
 # Examples
 ```julia
 using SignalChannels
 using SoapySDR
 
-Device(args) do dev
-    stream = SoapySDR.Stream(ComplexF32, dev.tx[1])
+# Single channel transmission
+config = SDRChannelConfig(
+    sample_rate = 5e6u"Hz",
+    frequency = 2.4e9u"Hz",
+    gain = -10u"dB"
+)
+data_channel = SignalChannel{ComplexF32}(8192, 1)
+stats_channel, warning_channel = stream_data(first(Devices()), config, data_channel)
 
-    # Create a channel with data to transmit
-    data_channel = SignalChannel{ComplexF32}(stream.mtu, stream.nchannels)
+# Multi-channel with same config for all channels
+data_channel_2ch = SignalChannel{ComplexF32}(8192, 2)
+stats_channel, warning_channel = stream_data(first(Devices()), config, data_channel_2ch)
 
-    # Start transmission
-    warning_channel = stream_data(stream, data_channel)
+# Multi-channel with different configs per channel
+configs = (
+    SDRChannelConfig(sample_rate=5e6u"Hz", frequency=2.4e9u"Hz", gain=-10u"dB"),
+    SDRChannelConfig(sample_rate=5e6u"Hz", frequency=2.5e9u"Hz", gain=-15u"dB"),
+)
+stats_channel, warning_channel = stream_data(first(Devices()), configs, data_channel_2ch)
 
-    # Monitor warnings in another task
-    @async for warning in warning_channel
-        @warn "TX warning" type=warning.type time=warning.time_str
-    end
-
-    # Feed data into the channel
-    for i in 1:100
-        data = generate_transmission_data()
-        put!(data_channel, data)
-    end
-    close(data_channel)
-
-    # Wait for transmission to complete by waiting for warning channel to close
-    for warning in warning_channel
-        @warn "TX warning" type=warning.type time=warning.time_str
-    end
+# Feed data and monitor progress
+@async for stats in stats_channel
+    println("Transmitted \$(stats.total_samples) samples")
 end
+@async for warning in warning_channel
+    @warn "TX warning" type=warning.type time=warning.time_str
+end
+
+for i in 1:100
+    put!(data_channel, generate_transmission_data())
+end
+close(data_channel)
 ```
 """
-function SignalChannels.stream_data(s_tx::SoapySDR.Stream{T}, in::SignalChannel{T}; warning_buffer_size::Integer=16) where {T<:Number}
-    # Track total samples written for timing calculations
-    total_samples_written = 0
-    sample_rate = first(s_tx.d.tx).sample_rate
+# Single config version - uses same config for all antenna channels in the SignalChannel
+function SignalChannels.stream_data(
+    dev_args,
+    config::SignalChannels.SDRChannelConfig,
+    in::SignalChannel{T};
+    warning_buffer_size::Integer=16,
+    stats_buffer_size::Integer=1000,
+) where {T<:Number}
+    # Create a tuple of configs matching the number of antenna channels
+    N = in.num_antenna_channels
+    configs = ntuple(_ -> config, N)
+    return SignalChannels.stream_data(dev_args, configs, in; warning_buffer_size, stats_buffer_size)
+end
 
-    # Create warning channel - non-blocking pushes, silently drop if full
+# Multi-config version - one config per antenna channel
+function SignalChannels.stream_data(
+    dev_args,
+    configs::NTuple{N,SignalChannels.SDRChannelConfig},
+    in::SignalChannel{T};
+    warning_buffer_size::Integer=16,
+    stats_buffer_size::Integer=1000,
+) where {T<:Number,N}
+    if Threads.nthreads() < 2
+        error("stream_data requires Julia to be started with multiple threads. " *
+              "Start Julia with `julia --threads=auto` or set JULIA_NUM_THREADS environment variable.")
+    end
+
+    if in.num_antenna_channels != N
+        error("Number of configs ($N) must match number of antenna channels in SignalChannel ($(in.num_antenna_channels))")
+    end
+
+    # Validate all configs have the same sample_rate (required for multi-channel streams)
+    sample_rate = first(configs).sample_rate
+    for (i, config) in enumerate(configs)
+        if config.sample_rate != sample_rate
+            error("All SDRChannelConfigs must have the same sample_rate for multi-channel TX. " *
+                  "Config 1 has $(sample_rate), config $i has $(config.sample_rate)")
+        end
+    end
+
+    stats_channel = Channel{SignalChannels.TxStats}(stats_buffer_size)
     warning_channel = Channel{SignalChannels.StreamWarning}(warning_buffer_size)
 
     task = Threads.@spawn begin
-        SoapySDR.activate!(s_tx) do
-            # Consume channel and transmit data via s_tx
-            SignalChannels.consume_channel(in) do buff
-                # Write with a custom wrapper to intercept errors without exceptions
-                buffers = split_matrix(buff)
-                samples_to_write = length(first(buffers))
-                total_nwritten = 0
-                timeout_us = uconvert(u"μs", 0.9u"s").val
-
-                GC.@preserve buffers while total_nwritten < samples_to_write
-                    buff_ptrs = pointer(map(b -> pointer(b, total_nwritten + 1), buffers))
-                    out_flags = Ref{Cint}(0)
-                    nwritten = SoapySDR.SoapySDRDevice_writeStream(
-                        s_tx.d,
-                        s_tx,
-                        buff_ptrs,
-                        samples_to_write - total_nwritten,
-                        out_flags,
-                        0,
-                        timeout_us,
-                    )
-
-                    # Check for errors in the return value
-                    if nwritten < 0
-                        # Calculate expected sample time based on sample rate
-                        expected_sample_seconds = total_samples_written / uconvert(u"Hz", sample_rate).val
-                        time_str = format_time(expected_sample_seconds)
-
-                        if nwritten == SoapySDR.SOAPY_SDR_UNDERFLOW
-                            push_warning!(warning_channel, SignalChannels.StreamWarning(:underflow, time_str))
-                        elseif nwritten == SoapySDR.SOAPY_SDR_TIMEOUT
-                            push_warning!(warning_channel, SignalChannels.StreamWarning(:timeout, time_str))
-                        else
-                            push_warning!(warning_channel, SignalChannels.StreamWarning(:error, time_str, Int(nwritten), SoapySDR.error_to_string(nwritten)))
-                        end
-                        break  # Exit on error
-                    else
-                        total_nwritten += nwritten
-                        total_samples_written += nwritten
-                    end
-                end
+        SoapySDR.Device(dev_args) do dev
+            # Configure each TX channel with its config
+            tx_channels = [dev.tx[i] for i in 1:N]
+            for (i, (tx, config)) in enumerate(zip(tx_channels, configs))
+                apply_config!(tx, config; channel_idx=i)
             end
 
-            # We need to sleep() until we're done transmitting,
-            # otherwise we deactivate!() a little bit too eagerly.
-            sleep(1)
+            # Create stream with all configured channels
+            stream = SoapySDR.Stream(T, tx_channels)
+            total_samples_written = 0
+
+            SoapySDR.activate!(stream) do
+                timeout_us = Int(uconvert(u"μs", 0.9u"s").val)
+
+                for buff in in
+                    # Check if output channels are closed - if so, stop transmitting
+                    if !isopen(stats_channel) || !isopen(warning_channel)
+                        break
+                    end
+
+                    buffers = split_matrix(buff)
+                    samples_to_write = length(first(buffers))
+                    total_nwritten = 0
+
+                    GC.@preserve buffers while total_nwritten < samples_to_write
+                        buff_ptrs = pointer(map(b -> pointer(b, total_nwritten + 1), buffers))
+                        out_flags = Ref{Cint}(0)
+                        nwritten = SoapySDR.SoapySDRDevice_writeStream(
+                            stream.d,
+                            stream,
+                            buff_ptrs,
+                            samples_to_write - total_nwritten,
+                            out_flags,
+                            0,
+                            timeout_us,
+                        )
+
+                        if nwritten < 0
+                            expected_sample_seconds = total_samples_written / ustrip(u"Hz", sample_rate)
+                            time_str = format_time(expected_sample_seconds)
+
+                            if nwritten == SoapySDR.SOAPY_SDR_UNDERFLOW
+                                push_warning!(warning_channel, SignalChannels.StreamWarning(:underflow, time_str))
+                            elseif nwritten == SoapySDR.SOAPY_SDR_TIMEOUT
+                                push_warning!(warning_channel, SignalChannels.StreamWarning(:timeout, time_str))
+                            else
+                                push_warning!(warning_channel, SignalChannels.StreamWarning(:error, time_str, Int(nwritten), SoapySDR.error_to_string(nwritten)))
+                            end
+                            break
+                        else
+                            total_nwritten += nwritten
+                            total_samples_written += nwritten
+                        end
+                    end
+
+                    # Push stats after each buffer is transmitted (blocking)
+                    # If the channel is closed, this will throw and we exit
+                    try
+                        put!(stats_channel, SignalChannels.TxStats(total_samples_written))
+                    catch e
+                        e isa InvalidStateException && break
+                        rethrow()
+                    end
+                end
+
+                # Wait for transmission to complete before deactivating
+                sleep(1)
+            end
         end
+        close(stats_channel)
+        close(warning_channel)
     end
+
+    bind(stats_channel, task)
     bind(warning_channel, task)
-    Base.errormonitor(task)
-    return warning_channel
+    bind(in, task) # Propagate errors upwards
+    return (stats_channel, warning_channel)
 end
 
 """
     sdr_periodogram_liveplot(;
         sampling_freq = 5e6u"Hz",
-        run_time = 40u"s",
         dev_args = first(Devices()),
         center_freq = 1.5754e9u"Hz",
         gain::Union{Nothing,<:Unitful.Gain} = 50u"dB",
@@ -317,6 +552,7 @@ end
     )
 
 Convenience function to stream SDR data and display a live periodogram with warning capture.
+Press Ctrl+C to stop.
 
 This high-level function combines all the pieces needed for real-time spectrum analysis:
 - Configures an SDR device
@@ -328,7 +564,6 @@ This high-level function combines all the pieces needed for real-time spectrum a
 
 # Arguments
 - `sampling_freq`: Sampling frequency (default: 5 MHz)
-- `run_time`: Total runtime for data collection (default: 40 seconds)
 - `dev_args`: Device arguments, defaults to first available device
 - `center_freq`: Center frequency for SDR (default: 1.5754 GHz)
 - `gain`: Receiver gain, or `nothing` for automatic gain control (default: 50 dB)
@@ -342,6 +577,7 @@ using SignalChannels
 using SoapySDR
 
 # Use defaults (first device, 1.5754 GHz, 5 MHz sampling, 50 dB gain)
+# Press Ctrl+C to stop
 sdr_periodogram_liveplot()
 
 # Custom frequency and gain
@@ -356,7 +592,6 @@ sdr_periodogram_liveplot(update_rate = 50u"ms")
 """
 function SignalChannels.sdr_periodogram_liveplot(;
     sampling_freq=5e6u"Hz",
-    run_time=40u"s",
     dev_args=first(Devices()),
     center_freq=1.57542e9u"Hz",
     gain::Union{Nothing,<:Unitful.Gain}=50u"dB",
@@ -364,36 +599,38 @@ function SignalChannels.sdr_periodogram_liveplot(;
     window=hamming,
     update_rate=100u"ms",
 )
-    eval_num_samples = Int(upreferred(sampling_freq * run_time))
+    config = SignalChannels.SDRChannelConfig(
+        sample_rate=sampling_freq,
+        frequency=center_freq,
+        gain=gain,
+    )
 
-    Device(dev_args) do dev
-        # Configure receiver
-        rx = dev.rx[1]
-        rx.sample_rate = sampling_freq
-        rx.bandwidth = sampling_freq
-        rx.frequency = center_freq
+    # Use an Event to allow stopping with Ctrl+C
+    stop_event = Base.Event()
 
-        if isnothing(gain)
-            rx.gain_mode = true
-        else
-            rx.gain = gain
+    # Getting samples in chunks - runs until stop_event is triggered
+    data_stream, warning_channel = SignalChannels.stream_data(dev_args, config, stop_event)
+
+    # Rechunk to desired size
+    rechunked_stream = SignalChannels.rechunk(data_stream, num_samples_per_chunk)
+
+    # Create periodogram processing channel
+    pgram_channel =
+        SignalChannels.calculate_periodogram(rechunked_stream, sampling_freq; window, push_roughly_every=update_rate)
+
+    # Display the GUI using LivePlot with warning display
+    try
+        SignalChannels.periodogram_liveplot(pgram_channel; warning_channel, stop_instruction="Press Ctrl+C to stop")
+    catch e
+        notify(stop_event)
+        if !isa(e, InterruptException)
+            rethrow(e)
         end
-
-        # Create stream
-        stream = SoapySDR.Stream(rx.native_stream_format, rx)
-
-        # Getting samples in chunks
-        data_stream, warning_channel = SignalChannels.stream_data(stream, eval_num_samples)
-
-        # Rechunk to desired size
-        rechunked_stream = SignalChannels.rechunk(data_stream, num_samples_per_chunk)
-
-        # Create periodogram processing channel
-        pgram_channel =
-            SignalChannels.calculate_periodogram(rechunked_stream, sampling_freq; window, push_roughly_every=update_rate)
-
-        # Display the GUI using LivePlot with warning display
-        SignalChannels.periodogram_liveplot(pgram_channel; warning_channel)
+    finally
+        notify(stop_event)
+        # Drain channels to allow clean shutdown
+        for _ in pgram_channel end
+        for _ in warning_channel end
     end
 end
 
@@ -451,29 +688,18 @@ function SignalChannels.sdr_record_to_file(
     center_freq=1.57542e9u"Hz",
     gain::Union{Nothing,<:Unitful.Gain}=50u"dB",
 )
-    Device(dev_args) do dev
-        # Configure receiver
-        rx = dev.rx[1]
-        rx.sample_rate = sampling_freq
-        rx.bandwidth = sampling_freq
-        rx.frequency = center_freq
+    config = SignalChannels.SDRChannelConfig(
+        sample_rate=sampling_freq,
+        frequency=center_freq,
+        gain=gain,
+    )
 
-        if isnothing(gain)
-            rx.gain_mode = true
-        else
-            rx.gain = gain
-        end
+    # Getting samples in chunks (ignore warning channel for this convenience function)
+    data_stream, _ = SignalChannels.stream_data(dev_args, config, num_samples)
 
-        # Create stream
-        stream = SoapySDR.Stream(rx.native_stream_format, rx)
-
-        # Getting samples in chunks (ignore warning channel for this convenience function)
-        data_stream, _ = SignalChannels.stream_data(stream, num_samples)
-
-        # Write directly to file
-        task = SignalChannels.write_to_file(data_stream, file_path)
-        wait(task)
-    end
+    # Write directly to file
+    write_task = SignalChannels.write_to_file(data_stream, file_path)
+    wait(write_task)
 end
 
 end # module SignalChannelsSoapySDRExt

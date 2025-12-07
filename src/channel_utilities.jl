@@ -62,6 +62,7 @@ function tee(in::AbstractChannel)
     end
     bind(out1, task)
     bind(out2, task)
+    bind(in, task)  # Propagate errors upstream
     return (out1, out2)
 end
 
@@ -84,24 +85,17 @@ input = SignalChannel{ComplexF32}(512, 4)
 output = rechunk(input, 1024)
 ```
 """
-function rechunk(in::SignalChannel{T}, chunk_size::Integer) where {T<:Number}
-    return spawn_signal_channel_thread(;
-        T,
-        num_samples=chunk_size,
-        in.num_antenna_channels,
-    ) do out
+function rechunk(in::SignalChannel{T}, chunk_size::Integer, channel_size = 2) where {T<:Number}
+    out = SignalChannel{T}(chunk_size, in.num_antenna_channels, channel_size)
+    task = Threads.@spawn begin
         chunk_filled = 0
         chunk_idx = 1
-        # We'll alternate between filling up these three chunks, then sending
-        # them down the channel.  We have three so that we can have:
+        # We'll alternate between filling up these channel_size + 1 chunks, then sending
+        # them down the channel.  We have channel_size + 1 so that we can have:
         # - One that we're modifying,
-        # - One that was sent out to a downstream,
-        # - One that is being held by an intermediary
-        chunks = [
-            FixedSizeMatrixDefault{T}(undef, chunk_size, in.num_antenna_channels),
-            FixedSizeMatrixDefault{T}(undef, chunk_size, in.num_antenna_channels),
-            FixedSizeMatrixDefault{T}(undef, chunk_size, in.num_antenna_channels),
-        ]
+        # - And others are sent out to a downstream
+        chunks = [FixedSizeMatrixDefault{T}(undef, chunk_size, in.num_antenna_channels) for _ in 1:(channel_size + 1)]
+        
         consume_channel(in) do data
             # Make the loop type-stable
             data = view(data, 1:size(data, 1), :)
@@ -129,7 +123,11 @@ function rechunk(in::SignalChannel{T}, chunk_size::Integer) where {T<:Number}
                 end
             end
         end
+        close(out)
     end
+    bind(out, task)
+    bind(in, task)  # Propagate errors upstream
+    return out
 end
 
 """

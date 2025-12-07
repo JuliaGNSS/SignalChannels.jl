@@ -93,11 +93,12 @@ function calculate_periodogram(
     end
 
     bind(periodogram_channel, task)
+    bind(data_channel, task)  # Propagate errors upstream
     periodogram_channel
 end
 
 """
-    periodogram_liveplot(periodogram_channel::Channel{PeriodogramData}; warning_channel=nothing, max_warnings=20)
+    periodogram_liveplot(periodogram_channel::Channel{PeriodogramData}; warning_channel=nothing, max_warnings=20, stop_instruction=nothing)
 
 Displays a real-time updating plot of the periodogram data using LivePlot with UnicodePlots.
 The plot updates as new periodogram data arrives through the channel.
@@ -109,10 +110,12 @@ The most recent `max_warnings` warnings are shown.
 - `periodogram_channel::Channel{PeriodogramData}`: Channel yielding periodogram data
 - `warning_channel::Union{Nothing, Channel{StreamWarning}}`: Optional channel for warnings (default: nothing)
 - `max_warnings::Integer`: Maximum number of warnings to display (default: 20)
+- `stop_instruction::Union{Nothing, String}`: Optional instruction to display in the title (e.g., "Press Ctrl+C to stop")
 """
 function periodogram_liveplot(periodogram_channel::Channel{PeriodogramData};
     warning_channel::Union{Nothing,Channel{StreamWarning}}=nothing,
-    max_warnings::Integer=20)
+    max_warnings::Integer=20,
+    stop_instruction::Union{Nothing,String}=nothing)
     live_plot = LivePlot()
 
     # Track min/max power values across all iterations
@@ -122,7 +125,8 @@ function periodogram_liveplot(periodogram_channel::Channel{PeriodogramData};
     # Accumulated warnings buffer
     warning_lines = String[]
 
-    consume_channel(periodogram_channel) do pgram_data
+    try
+        consume_channel(periodogram_channel) do pgram_data
         # Drain any available warnings from the warning channel (non-blocking)
         if !isnothing(warning_channel)
             while isready(warning_channel)
@@ -145,6 +149,14 @@ function periodogram_liveplot(periodogram_channel::Channel{PeriodogramData};
         min_power = min(min_power, minimum(power))
         max_power = max(max_power, maximum(power))
 
+        # Ensure valid ylim values (handle -Inf from log10(0) or NaN from bad data)
+        plot_min = isfinite(min_power) ? min_power : -100.0
+        plot_max = isfinite(max_power) ? max_power : 0.0
+        # Ensure min < max for valid plot range
+        if plot_min >= plot_max
+            plot_max = plot_min + 1.0
+        end
+
         # Create the dual-panel layout
         layout_result = @layout [
             UnicodePlots.lineplot(
@@ -152,16 +164,21 @@ function periodogram_liveplot(periodogram_channel::Channel{PeriodogramData};
                 power;
                 xlabel="Frequency (Hz)",
                 ylabel="Power Spectral Density",
-                title="Real-time Periodogram - Time: $(round(pgram_data.timestamp, digits=2)) s",
-                ylim=(min_power, max_power),
+                title="Periodogram - Time: $(round(pgram_data.timestamp, digits=2)) s$(isnothing(stop_instruction) ? "" : " - $stop_instruction")",
+                ylim=(plot_min, plot_max),
             ),
             textplot(
                 join(warning_lines, '\n');
-                width=40,
+                width=30,
                 title="Recent Warnings",
                 border=:solid
             )
         ]
         live_plot(layout_result)
+        end
+    finally
+        # Close the channel to propagate shutdown upstream
+        close(periodogram_channel)
+        !isnothing(warning_channel) && close(warning_channel)
     end
 end

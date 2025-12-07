@@ -34,6 +34,18 @@ Convenience constructor for simple warnings without error codes.
 StreamWarning(type::Symbol, time_str::String) = StreamWarning(type, time_str, nothing, nothing)
 
 """
+    TxStats
+
+Statistics about transmitted samples from a TX stream.
+
+# Fields
+- `total_samples::Int`: Total number of samples successfully transmitted so far
+"""
+struct TxStats
+    total_samples::Int
+end
+
+"""
     SignalChannel{T} <: AbstractChannel{T}
 
 A specialized channel type that enforces matrix dimensions for multi-channel signal data.
