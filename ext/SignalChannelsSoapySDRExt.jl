@@ -304,6 +304,9 @@ function SignalChannels.stream_data(
             out_flags = Ref{Cint}()
             timens = Ref{Clonglong}()
 
+            # Pre-compute sample_rate value to avoid allocations in hot path
+            sample_rate_val = ustrip(u"Hz", sample_rate)
+
             SoapySDR.activate!(stream) do
                 timeout_us = Int(uconvert(u"μs", 0.9u"s").val)
 
@@ -327,7 +330,7 @@ function SignalChannels.stream_data(
                     nread = read_buffer!(stream, buff, timeout_us, buff_ptrs, out_flags, timens)
 
                     if nread < 0
-                        expected_sample_seconds = total_samples_read / uconvert(u"Hz", sample_rate).val
+                        expected_sample_seconds = total_samples_read / sample_rate_val
                         time_str = format_time(expected_sample_seconds)
 
                         if nread == SoapySDR.SOAPY_SDR_OVERFLOW
@@ -486,6 +489,9 @@ function SignalChannels.stream_data(
             buff_ptrs = Vector{Ptr{T}}(undef, nchannels)
             out_flags = Ref{Cint}(0)
 
+            # Pre-compute sample_rate value to avoid allocations in hot path
+            sample_rate_val = ustrip(u"Hz", sample_rate)
+
             SoapySDR.activate!(stream) do
                 timeout_us = Int(uconvert(u"μs", 0.9u"s").val)
 
@@ -515,7 +521,7 @@ function SignalChannels.stream_data(
                         )
 
                         if nwritten < 0
-                            expected_sample_seconds = total_samples_written / ustrip(u"Hz", sample_rate)
+                            expected_sample_seconds = total_samples_written / sample_rate_val
                             time_str = format_time(expected_sample_seconds)
 
                             if nwritten == SoapySDR.SOAPY_SDR_UNDERFLOW
