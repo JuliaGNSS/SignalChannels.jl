@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.3](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.2...v3.0.3) (2025-12-10)
+
+
+### Performance Improvements
+
+* improve performance of rechunk ([487cb1f](https://github.com/JuliaGNSS/SignalChannels.jl/commit/487cb1f289257f8be75a4943057b382df2f38724))
+
 ## [3.0.2](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.1...v3.0.2) (2025-12-10)
 
 
