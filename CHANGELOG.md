@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.5](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.4...v3.0.5) (2025-12-10)
+
+
+### Bug Fixes
+
+* show warnings when writing to file ([8a6f9c4](https://github.com/JuliaGNSS/SignalChannels.jl/commit/8a6f9c4792502ee4e7672f5d5ee02ba36a458749))
+
 ## [3.0.4](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.3...v3.0.4) (2025-12-10)
 
 
