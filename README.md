@@ -45,21 +45,6 @@ for data in chan
 end
 ```
 
-### Stream Generation
-
-```julia
-# Generate a synthetic signal stream
-chan = generate_stream(1024, 2; T=ComplexF32) do buff
-    buff .= rand(ComplexF32, size(buff))
-    return true  # Continue generating
-end
-
-# Process the stream
-for data in chan
-    # Process data
-end
-```
-
 ### Rechunking
 
 ```julia
@@ -189,7 +174,6 @@ A channel that enforces matrix dimensions for type safety in multi-channel signa
 
 - `spawn_signal_channel_thread(f; T, num_samples, num_antenna_channels, buffers_in_flight)` - Run function in separate thread with SignalChannel output
 - `membuffer(channel, max_size)` - Add buffering for real-time applications
-- `generate_stream(gen_func, num_samples, num_antenna_channels; kwargs...)` - Generate signal streams
 
 ### Periodogram Analysis
 
