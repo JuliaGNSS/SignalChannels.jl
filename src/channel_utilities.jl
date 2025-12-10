@@ -28,7 +28,7 @@ function consume_channel(f::Function, c::AbstractChannel, args...)
 end
 
 """
-    tee(in::AbstractChannel{T}) where {T}
+    tee(in::AbstractChannel, channel_size::Integer=0)
 
 Split a channel into two synchronized outputs. Both output channels receive
 identical copies of the data.
@@ -36,22 +36,28 @@ identical copies of the data.
 Returns a tuple `(out1, out2)` of two channels with the same type as the input.
 
 For `SignalChannel`, preserves the matrix dimensions.
-For generic `Channel`, creates unbuffered output channels.
+For generic `Channel`, creates output channels with the specified buffer size.
+
+Based on benchmarks in benchmark/benchmarks.jl a channel size of 16 is a sweet spot.
+
+# Arguments
+- `in`: Input channel to split
+- `channel_size`: Buffer size for output channels (default: 16)
 
 # Examples
 ```julia
 # With SignalChannel
 input = SignalChannel{ComplexF32}(1024, 4)
-out1, out2 = tee(input)
+out1, out2 = tee(input, 16)
 
 # With generic Channel
 input = Channel{Int}(10)
-out1, out2 = tee(input)
+out1, out2 = tee(input, 16)
 ```
 """
-function tee(in::AbstractChannel)
-    out1 = similar(in)
-    out2 = similar(in)
+function tee(in::AbstractChannel, channel_size::Integer=16)
+    out1 = similar(in, channel_size)
+    out2 = similar(in, channel_size)
     task = Threads.@spawn begin
         for data in in
             put!(out1, data)
