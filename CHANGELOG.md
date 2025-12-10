@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.4](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.3...v3.0.4) (2025-12-10)
+
+
+### Performance Improvements
+
+* add benchmark for tee ([66b8acf](https://github.com/JuliaGNSS/SignalChannels.jl/commit/66b8acf5f67bafac9cb234169d647eb561075b64))
+
 ## [3.0.3](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.2...v3.0.3) (2025-12-10)
 
 
