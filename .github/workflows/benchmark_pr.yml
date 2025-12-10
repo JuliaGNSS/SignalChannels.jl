@@ -1,0 +1,15 @@
+name: Benchmark this PR
+on:
+  pull_request_target:
+    branches: [ main ]  # change to your default branch
+permissions:
+  pull-requests: write    # action needs to post a comment
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: MilesCranmer/AirspeedVelocity.jl@action-v1
+        with:
+          julia-version: '1'
+          bench-on: ${{github.event.pull_request.head.sha}}
