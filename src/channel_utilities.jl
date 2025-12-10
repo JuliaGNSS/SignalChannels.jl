@@ -74,6 +74,8 @@ This is useful for adapting data chunk sizes between different processing stages
 
 The number of antenna channels is preserved from the input channel.
 
+Based on benchmarks in benchmark/benchmarks.jl a channel size of 16 is a sweet spot.
+
 # Arguments
 - `in`: Input SignalChannel
 - `chunk_size`: Desired number of samples in each output chunk
@@ -85,40 +87,37 @@ input = SignalChannel{ComplexF32}(512, 4)
 output = rechunk(input, 1024)
 ```
 """
-function rechunk(in::SignalChannel{T}, chunk_size::Integer, channel_size = 2) where {T<:Number}
+function rechunk(in::SignalChannel{T}, chunk_size::Integer, channel_size=16) where {T<:Number}
     out = SignalChannel{T}(chunk_size, in.num_antenna_channels, channel_size)
     task = Threads.@spawn begin
         chunk_filled = 0
         chunk_idx = 1
+        num_chunks = channel_size + 1
         # We'll alternate between filling up these channel_size + 1 chunks, then sending
         # them down the channel.  We have channel_size + 1 so that we can have:
         # - One that we're modifying,
         # - And others are sent out to a downstream
-        chunks = [FixedSizeMatrixDefault{T}(undef, chunk_size, in.num_antenna_channels) for _ in 1:(channel_size + 1)]
-        
-        consume_channel(in) do data
-            # Make the loop type-stable
-            data = view(data, 1:size(data, 1), :)
+        chunks = [FixedSizeMatrixDefault{T}(undef, chunk_size, in.num_antenna_channels) for _ in 1:num_chunks]
 
-            # Generate chunks until this data is done
-            while !isempty(data)
+        for data in in
+            data_offset = 0
+            data_remaining = size(data, 1)
 
-                # How many samples are we going to consume from this buffer?
-                samples_wanted = (chunk_size - chunk_filled)
-                samples_taken = min(size(data, 1), samples_wanted)
+            while data_remaining > 0
+                samples_wanted = chunk_size - chunk_filled
+                samples_taken = min(data_remaining, samples_wanted)
 
-                # Copy as much of `data` as we can into `chunks`
+                # Slice assignment with view on right side - no allocations
                 chunks[chunk_idx][chunk_filled+1:chunk_filled+samples_taken, :] =
-                    data[1:samples_taken, :]
+                    view(data, data_offset+1:data_offset+samples_taken, :)
+
                 chunk_filled += samples_taken
+                data_offset += samples_taken
+                data_remaining -= samples_taken
 
-                # Move our view of `data` forward:
-                data = view(data, samples_taken+1:size(data, 1), :)
-
-                # If we filled the chunk completely, then send it off and flip `chunk_idx`:
                 if chunk_filled >= chunk_size
                     put!(out, chunks[chunk_idx])
-                    chunk_idx = mod1(chunk_idx + 1, length(chunks))
+                    chunk_idx = mod1(chunk_idx + 1, num_chunks)
                     chunk_filled = 0
                 end
             end
