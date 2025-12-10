@@ -651,8 +651,10 @@ function SignalChannels.sdr_periodogram_liveplot(;
     finally
         notify(stop_event)
         # Drain channels to allow clean shutdown
-        for _ in pgram_channel end
-        for _ in warning_channel end
+        for _ in pgram_channel
+        end
+        for _ in warning_channel
+        end
     end
 end
 
@@ -716,12 +718,17 @@ function SignalChannels.sdr_record_to_file(
         gain=gain,
     )
 
-    # Getting samples in chunks (ignore warning channel for this convenience function)
-    data_stream, _ = SignalChannels.stream_data(dev_args, config, num_samples)
+    # Getting samples in chunks
+    data_stream, warning_channel = SignalChannels.stream_data(dev_args, config, num_samples)
 
     # Write directly to file
     write_task = SignalChannels.write_to_file(data_stream, file_path)
     wait(write_task)
+
+    # Print any warnings that occurred during recording
+    for warning in warning_channel
+        @warn "SDR warning" type = warning.type time = warning.time_str
+    end
 end
 
 end # module SignalChannelsSoapySDRExt
