@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.6](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.5...v3.0.6) (2025-12-11)
+
+
+### Performance Improvements
+
+* add benchmark for signal channel ([fd0d739](https://github.com/JuliaGNSS/SignalChannels.jl/commit/fd0d73928effc9647e2d9bb9ea9773a8c542da57))
+
 ## [3.0.5](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.4...v3.0.5) (2025-12-10)
 
 
