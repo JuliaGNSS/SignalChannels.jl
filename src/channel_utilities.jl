@@ -59,12 +59,19 @@ function tee(in::AbstractChannel, channel_size::Integer=16)
     out1 = similar(in, channel_size)
     out2 = similar(in, channel_size)
     task = Threads.@spawn begin
-        for data in in
-            put!(out1, data)
-            put!(out2, data)
+        try
+            for data in in
+                put!(out1, data)
+                put!(out2, data)
+            end
+        finally
+            # Close all channels to signal shutdown
+            close(out1)
+            close(out2)
+            close(in)
+            # Drain input so upstream producers blocked on put!() can detect closure
+            for _ in in end
         end
-        close(out1)
-        close(out2)
     end
     bind(out1, task)
     bind(out2, task)
@@ -105,30 +112,37 @@ function rechunk(in::SignalChannel{T}, chunk_size::Integer, channel_size=16) whe
         # - And others are sent out to a downstream
         chunks = [FixedSizeMatrixDefault{T}(undef, chunk_size, in.num_antenna_channels) for _ in 1:num_chunks]
 
-        for data in in
-            data_offset = 0
-            data_remaining = size(data, 1)
+        try
+            for data in in
+                data_offset = 0
+                data_remaining = size(data, 1)
 
-            while data_remaining > 0
-                samples_wanted = chunk_size - chunk_filled
-                samples_taken = min(data_remaining, samples_wanted)
+                while data_remaining > 0
+                    samples_wanted = chunk_size - chunk_filled
+                    samples_taken = min(data_remaining, samples_wanted)
 
-                # Slice assignment with view on right side - no allocations
-                chunks[chunk_idx][chunk_filled+1:chunk_filled+samples_taken, :] =
-                    view(data, data_offset+1:data_offset+samples_taken, :)
+                    # Slice assignment with view on right side - no allocations
+                    chunks[chunk_idx][chunk_filled+1:chunk_filled+samples_taken, :] =
+                        view(data, data_offset+1:data_offset+samples_taken, :)
 
-                chunk_filled += samples_taken
-                data_offset += samples_taken
-                data_remaining -= samples_taken
+                    chunk_filled += samples_taken
+                    data_offset += samples_taken
+                    data_remaining -= samples_taken
 
-                if chunk_filled >= chunk_size
-                    put!(out, chunks[chunk_idx])
-                    chunk_idx = mod1(chunk_idx + 1, num_chunks)
-                    chunk_filled = 0
+                    if chunk_filled >= chunk_size
+                        put!(out, chunks[chunk_idx])
+                        chunk_idx = mod1(chunk_idx + 1, num_chunks)
+                        chunk_filled = 0
+                    end
                 end
             end
+        finally
+            # Close all channels to signal shutdown
+            close(out)
+            close(in)
+            # Drain input so upstream producers blocked on put!() can detect closure
+            for _ in in end
         end
-        close(out)
     end
     bind(out, task)
     bind(in, task)  # Propagate errors upstream
