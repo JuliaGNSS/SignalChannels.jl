@@ -61,10 +61,17 @@ buffered = membuffer(input, 32)  # Buffer up to 32 integers
 function membuffer(in::AbstractChannel, max_size::Int = 16)
     out = similar(in, max_size)
     task = Threads.@spawn begin
-        for data in in
-            put!(out, data)
+        try
+            for data in in
+                put!(out, data)
+            end
+        finally
+            # Close all channels to signal shutdown
+            close(out)
+            close(in)
+            # Drain input so upstream producers blocked on put!() can detect closure
+            for _ in in end
         end
-        close(out)
     end
     bind(out, task)
     bind(in, task)  # Propagate errors upstream
