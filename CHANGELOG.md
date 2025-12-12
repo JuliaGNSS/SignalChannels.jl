@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.7](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.6...v3.0.7) (2025-12-12)
+
+
+### Bug Fixes
+
+* properly close upstream channels and drain incoming channel ([96b9104](https://github.com/JuliaGNSS/SignalChannels.jl/commit/96b9104bfee513f71ce0a58c17f38c8e7fdd5f78))
+
 ## [3.0.6](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.5...v3.0.6) (2025-12-11)
 
 
