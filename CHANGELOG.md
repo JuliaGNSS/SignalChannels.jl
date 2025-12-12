@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.8](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.7...v3.0.8) (2025-12-12)
+
+
+### Bug Fixes
+
+* propagating errors ([279ee1d](https://github.com/JuliaGNSS/SignalChannels.jl/commit/279ee1da3d170de4781873851d2d4781c18910f8))
+
 ## [3.0.7](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.6...v3.0.7) (2025-12-12)
 
 
