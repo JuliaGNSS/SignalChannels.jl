@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.9](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.8...v3.0.9) (2025-12-15)
+
+
+### Bug Fixes
+
+* buffer pool aliasing bug in rechunk and stream_data ([4ab734e](https://github.com/JuliaGNSS/SignalChannels.jl/commit/4ab734e8ea6c9978a60bc37ac99c17eecae92812))
+
 ## [3.0.8](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.7...v3.0.8) (2025-12-12)
 
 
