@@ -293,7 +293,11 @@ function SignalChannels.stream_data(
             close(setup_channel)
 
             # Pre-allocate buffer pool with zeros (not undef) to avoid NaN/garbage if SDR doesn't fully fill buffers
-            num_buffers = buffers_in_flight + 1
+            # We need buffers_in_flight + 2 buffers:
+            # - buffers_in_flight buffers can be sitting in the output channel
+            # - 1 buffer being written to by read_buffer!
+            # - 1 buffer being read by the (single) consumer
+            num_buffers = buffers_in_flight + 2
             buffer_pool = [FixedSizeMatrixDefault{T}(fill(zero(T), mtu, nchannels)) for _ in 1:num_buffers]
             buffer_idx = 1
             total_samples_read = 0

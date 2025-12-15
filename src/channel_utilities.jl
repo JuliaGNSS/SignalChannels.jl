@@ -123,12 +123,12 @@ function rechunk(in::SignalChannel{T}, chunk_size::Integer, channel_size=16) whe
     task = Threads.@spawn begin
         chunk_filled = 0
         chunk_idx = 1
-        num_chunks = channel_size + 1
-        # We'll alternate between filling up these channel_size + 1 chunks, then sending
-        # them down the channel.  We have channel_size + 1 so that we can have:
-        # - One that we're modifying,
-        # - And others are sent out to a downstream
-        chunks = [FixedSizeMatrixDefault{T}(undef, chunk_size, in.num_antenna_channels) for _ in 1:num_chunks]
+        num_buffers = channel_size + 2
+        # We need channel_size + 2 buffers:
+        # - channel_size buffers can be sitting in the output channel
+        # - 1 buffer being written to
+        # - 1 buffer being read by the (single) consumer
+        chunks = [FixedSizeMatrixDefault{T}(undef, chunk_size, in.num_antenna_channels) for _ in 1:num_buffers]
 
         for data in in
             data_offset = 0
@@ -152,7 +152,7 @@ function rechunk(in::SignalChannel{T}, chunk_size::Integer, channel_size=16) whe
                         should_break = true
                         break
                     end
-                    chunk_idx = mod1(chunk_idx + 1, num_chunks)
+                    chunk_idx = mod1(chunk_idx + 1, num_buffers)
                     chunk_filled = 0
                 end
             end
