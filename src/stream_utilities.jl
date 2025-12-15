@@ -30,9 +30,9 @@ chan = spawn_signal_channel_thread(T=ComplexF32, num_samples=1024, num_antenna_c
 end
 ```
 """
-function spawn_signal_channel_thread(f::Function; T::DataType = ComplexF32,
-                              num_samples, num_antenna_channels = 1,
-                              buffers_in_flight::Int = 0)
+function spawn_signal_channel_thread(f::Function; T::DataType=ComplexF32,
+    num_samples, num_antenna_channels=1,
+    buffers_in_flight::Int=0)
     SignalChannel{T}(num_samples, num_antenna_channels, buffers_in_flight, spawn=true) do out
         f(out)
     end
@@ -58,7 +58,7 @@ input = Channel{Int}(0)
 buffered = membuffer(input, 32)  # Buffer up to 32 integers
 ```
 """
-function membuffer(in::AbstractChannel, max_size::Int = 16)
+function membuffer(in::AbstractChannel, max_size::Int=16)
     out = similar(in, max_size)
     task = Threads.@spawn begin
         for data in in

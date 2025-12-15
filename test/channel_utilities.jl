@@ -325,6 +325,52 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             @test_throws ErrorException read_from_file(filepath, 100, 2; T=ComplexF32)
         end
     end
+
+    @testset "rechunk buffer pool integrity" begin
+        # This test verifies that the buffer pool doesn't have aliasing issues.
+        # With channel_size=16, we have 18 buffers. Push enough data to cycle
+        # through the buffer pool multiple times to catch any aliasing bugs.
+        #
+        # The bug scenario: if we only had channel_size + 1 buffers, then when
+        # the channel is full and the consumer is slow, we could overwrite a
+        # buffer that's still being read.
+
+        num_samples = 20000
+        num_chunks = 100  # Enough to cycle buffer pool many times
+        channel_size = 16
+
+        # Create data with unique values so we can detect corruption
+        all_original = [ComplexF32.(i .+ (1:num_samples) ./ num_samples, 0) |> x -> reshape(x, :, 1) for i in 1:num_chunks]
+
+        input = SignalChannel{ComplexF32}(num_samples, 1, channel_size)
+        intermediate = rechunk(input, 2048, channel_size)
+        output = rechunk(intermediate, num_samples, channel_size)
+
+        producer = Threads.@spawn begin
+            for data in all_original
+                put!(input, data)
+            end
+            close(input)
+        end
+
+        # Collect results
+        results = Vector{Matrix{ComplexF32}}()
+        for chunk in output
+            push!(results, Matrix(chunk))
+        end
+
+        wait(producer)
+
+        # Flatten and compare
+        original_flat = vcat([vec(d) for d in all_original]...)
+        result_flat = vcat([vec(r) for r in results]...)
+
+        # We expect some sample loss due to incomplete final chunks, but what
+        # we do get should match exactly
+        compare_length = length(result_flat)
+        @test compare_length > 0
+        @test original_flat[1:compare_length] == result_flat
+    end
 end
 
 end # module ChannelUtilitiesTest
