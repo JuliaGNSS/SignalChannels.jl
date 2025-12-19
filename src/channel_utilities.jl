@@ -28,31 +28,6 @@ function consume_channel(f::Function, c::AbstractChannel, args...)
 end
 
 """
-    put_or_close!(out::AbstractChannel, data, upstream::AbstractChannel)
-
-Try to put data to the output channel. If the output channel is closed,
-close the upstream channel to propagate shutdown and return false.
-Returns true if put succeeded, false if downstream was closed.
-"""
-function put_or_close!(out::AbstractChannel, data, upstream::AbstractChannel)
-    if isopen(out)
-        try
-            put!(out, data)
-            return true
-        catch e
-            if e isa InvalidStateException && !isopen(out)
-                close(upstream)
-                return false
-            end
-            rethrow(e)
-        end
-    else
-        close(upstream)
-        return false
-    end
-end
-
-"""
     tee(in::AbstractChannel, channel_size::Integer=0)
 
 Split a channel into two synchronized outputs. Both output channels receive
@@ -85,15 +60,15 @@ function tee(in::AbstractChannel, channel_size::Integer=16)
     out2 = similar(in, channel_size)
     task = Threads.@spawn begin
         for data in in
-            put_or_close!(out1, data, in) || break
-            put_or_close!(out2, data, in) || break
+            put!(out1, data)
+            put!(out2, data)
         end
         close(out1)
         close(out2)
     end
     bind(out1, task)
     bind(out2, task)
-    bind(in, task)  # Propagate errors upstream
+    bind(in, task)
     return (out1, out2)
 end
 
@@ -133,7 +108,6 @@ function rechunk(in::SignalChannel{T}, chunk_size::Integer, channel_size=16) whe
         for data in in
             data_offset = 0
             data_remaining = size(data, 1)
-            should_break = false
 
             while data_remaining > 0
                 samples_wanted = chunk_size - chunk_filled
@@ -148,15 +122,11 @@ function rechunk(in::SignalChannel{T}, chunk_size::Integer, channel_size=16) whe
                 data_remaining -= samples_taken
 
                 if chunk_filled >= chunk_size
-                    if !put_or_close!(out, chunks[chunk_idx], in)
-                        should_break = true
-                        break
-                    end
+                    put!(out, chunks[chunk_idx])
                     chunk_idx = mod1(chunk_idx + 1, num_buffers)
                     chunk_filled = 0
                 end
             end
-            should_break && break
         end
         close(out)
     end

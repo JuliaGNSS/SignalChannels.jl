@@ -62,11 +62,11 @@ function membuffer(in::AbstractChannel, max_size::Int=16)
     out = similar(in, max_size)
     task = Threads.@spawn begin
         for data in in
-            put_or_close!(out, data, in) || break
+            put!(out, data)
         end
         close(out)
     end
     bind(out, task)
-    bind(in, task)  # Propagate errors upstream
+    bind(in, task)
     return out
 end
