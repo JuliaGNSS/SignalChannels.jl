@@ -1,5 +1,28 @@
 # Changelog
 
+# [4.0.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.9...v4.0.0) (2025-12-19)
+
+
+* refactor!: remove put_or_close! in favor of bind for error propagation ([24c4f3f](https://github.com/JuliaGNSS/SignalChannels.jl/commit/24c4f3f87704ec9812041bbadd380c3c9b88ac12))
+
+
+### BREAKING CHANGES
+
+* put_or_close! is no longer exported. Use plain put!
+instead - bind() handles error propagation when downstream closes.
+
+The put_or_close! function was redundant - bind(in, task) already
+handles error propagation when a processing task fails due to a
+closed downstream channel. Simplified tee, rechunk, and membuffer
+to use plain put! calls.
+
+Added test verifying that errors propagate upstream via bind when
+a downstream channel is closed.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
 ## [3.0.9](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.8...v3.0.9) (2025-12-15)
 
 

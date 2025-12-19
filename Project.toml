@@ -1,6 +1,6 @@
 name = "SignalChannels"
 uuid = "59ec5e11-ed95-4167-ad38-35055440f478"
-version = "3.0.9"
+version = "4.0.0"
 authors = ["Soeren Schoenbrod <soeren.schoenbrod@outlook.de>"]
 
 [deps]
