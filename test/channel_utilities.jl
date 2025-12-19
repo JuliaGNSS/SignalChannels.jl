@@ -326,6 +326,46 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         end
     end
 
+    @testset "processing task error propagates to upstream" begin
+        # When a processing task (like rechunk) throws an error, it should propagate
+        # back to close the upstream channel via bind()
+        #
+        # Architecture:
+        #   Producer → input_chan → [rechunk task] → output_chan → Consumer
+        #                 ↑              ↓               ↓
+        #              bind(in,task)  bind(out,task)
+        #
+        # If rechunk task fails, both input_chan and output_chan should close.
+
+        input_chan = SignalChannel{ComplexF32}(100, 2)
+        tee_out1, tee_out2 = tee(input_chan)
+
+        # Close one of the tee outputs early - this will cause the tee task to fail
+        # when it tries to put! to the closed channel
+        close(tee_out1)
+
+        # Producer that tries to put data
+        producer_task = Threads.@spawn begin
+            for i in 1:100
+                put!(input_chan, fill(ComplexF32(i, 0), 100, 2))
+            end
+            close(input_chan)
+        end
+
+        # Give time for the error to propagate
+        sleep(0.2)
+
+        # The input channel should be closed due to bind propagation
+        # (tee task failed → input_chan closed via bind)
+        @test !isopen(input_chan)
+
+        # The other tee output should also be closed
+        @test !isopen(tee_out2)
+
+        # The producer should fail when trying to put to the closed channel
+        @test_throws Exception wait(producer_task)
+    end
+
     @testset "rechunk buffer pool integrity" begin
         # This test verifies that the buffer pool doesn't have aliasing issues.
         # With channel_size=16, we have 18 buffers. Push enough data to cycle
