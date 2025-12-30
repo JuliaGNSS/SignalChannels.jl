@@ -1,12 +1,12 @@
 module ChannelUtilitiesTest
 
 using Test: @test, @testset, @test_throws
-using SignalChannels: SignalChannel, consume_channel, tee, rechunk, write_to_file, read_from_file
+using SignalChannels: SignalChannel, PipeChannel, consume_channel, tee, rechunk, write_to_file, read_from_file
 using FixedSizeArrays: FixedSizeMatrixDefault
 
 @testset "Channel Utilities" begin
     @testset "consume_channel" begin
-        chan = Channel{Int}(10)
+        chan = PipeChannel{Int}(10)
         results = Int[]
 
         task = @async begin
@@ -79,8 +79,8 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         @test results2 == [ComplexF32(1, 0), ComplexF32(2, 0), ComplexF32(3, 0)]
     end
 
-    @testset "tee with generic Channel" begin
-        input_chan = Channel{Int}(10)
+    @testset "tee with generic PipeChannel" begin
+        input_chan = PipeChannel{Int}(10)
         out1, out2 = tee(input_chan)
 
         task = @async begin
@@ -347,7 +347,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         # Producer that tries to put data
         producer_task = Threads.@spawn begin
             for i in 1:100
-                put!(input_chan, fill(ComplexF32(i, 0), 100, 2))
+                put!(input_chan, FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 100, 2)))
             end
             close(input_chan)
         end
@@ -380,7 +380,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         channel_size = 16
 
         # Create data with unique values so we can detect corruption
-        all_original = [ComplexF32.(i .+ (1:num_samples) ./ num_samples, 0) |> x -> reshape(x, :, 1) for i in 1:num_chunks]
+        all_original = [FixedSizeMatrixDefault{ComplexF32}(ComplexF32.(i .+ (1:num_samples) ./ num_samples, 0) |> x -> reshape(x, :, 1)) for i in 1:num_chunks]
 
         input = SignalChannel{ComplexF32}(num_samples, 1, channel_size)
         intermediate = rechunk(input, 2048, channel_size)
@@ -392,6 +392,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             end
             close(input)
         end
+        bind(input, producer)  # Propagate errors from producer to close the channel
 
         # Collect results
         results = Vector{Matrix{ComplexF32}}()

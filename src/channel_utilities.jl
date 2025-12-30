@@ -8,7 +8,7 @@ This is useful for processing streaming data from a channel until the producer c
 
 # Examples
 ```julia
-chan = Channel{Int}(10)
+chan = PipeChannel{Int}(10)
 @async begin
     for i in 1:5
         put!(chan, i)
@@ -28,7 +28,7 @@ function consume_channel(f::Function, c::AbstractChannel, args...)
 end
 
 """
-    tee(in::AbstractChannel, channel_size::Integer=0)
+    tee(in::AbstractChannel, channel_size::Integer=16)
 
 Split a channel into two synchronized outputs. Both output channels receive
 identical copies of the data.
@@ -36,7 +36,7 @@ identical copies of the data.
 Returns a tuple `(out1, out2)` of two channels with the same type as the input.
 
 For `SignalChannel`, preserves the matrix dimensions.
-For generic `Channel`, creates output channels with the specified buffer size.
+For generic `PipeChannel`, creates output channels with the specified buffer size.
 
 Based on benchmarks in benchmark/benchmarks.jl a channel size of 16 is a sweet spot.
 
@@ -50,8 +50,8 @@ Based on benchmarks in benchmark/benchmarks.jl a channel size of 16 is a sweet s
 input = SignalChannel{ComplexF32}(1024, 4)
 out1, out2 = tee(input, 16)
 
-# With generic Channel
-input = Channel{Int}(10)
+# With generic PipeChannel
+input = PipeChannel{Int}(10)
 out1, out2 = tee(input, 16)
 ```
 """
