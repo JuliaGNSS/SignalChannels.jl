@@ -9,9 +9,7 @@ const CHANNEL_NUM_SAMPLES = 2048
 # Setup: create producer/consumer pipeline ready to run
 function setup_channel_benchmark(num_samples::Int, buffer_size::Int)
     ch = SignalChannel{ComplexF32}(num_samples, 1, buffer_size)
-    # Pre-allocate data as FixedSizeMatrixDefault to avoid allocation on put!
-    # Using Matrix would cause a conversion allocation on every put! call,
-    # hiding the true channel performance characteristics
+
     data = FixedSizeMatrixDefault{ComplexF32}(rand(ComplexF32, num_samples, 1))
     return (ch, data)
 end
@@ -25,11 +23,11 @@ function run_channel_benchmark!(ch::SignalChannel{ComplexF32}, data::FixedSizeMa
         end
         close(ch)
     end
+    bind(ch, producer)
 
     # Consumer task
     consumer = Threads.@spawn begin
         for _ in ch
-            # discard
         end
     end
 

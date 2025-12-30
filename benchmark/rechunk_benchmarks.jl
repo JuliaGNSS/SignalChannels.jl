@@ -15,9 +15,6 @@ function setup_pipeline(input_size::Int, output_size::Int, output_channel_size::
     # Create the rechunk pipeline - this spawns the task but it blocks waiting for input
     output = rechunk(input, output_size, output_channel_size)
 
-    # Pre-allocate input buffers as FixedSizeMatrixDefault to avoid allocation on put!
-    # Using Matrix would cause a conversion allocation on every put! call,
-    # hiding the true channel performance characteristics
     buffers = [FixedSizeMatrixDefault{ComplexF32}(zeros(ComplexF32, input_size, 1)) for _ in 1:NUM_BUFFERS]
 
     return (input, output, buffers)
@@ -33,6 +30,7 @@ function run_pipeline!(input, output, buffers)
         end
         close(input)
     end
+    bind(input, producer)
 
     # Consumer: drain the output as fast as possible
     count = 0
@@ -44,8 +42,7 @@ function run_pipeline!(input, output, buffers)
     return count
 end
 
-# Channel sizes to test - reduced set for faster CI
-const RECHUNK_CHANNEL_SIZES = [0, 1, 4, 16, 64]
+const RECHUNK_CHANNEL_SIZES = [1, 4, 16, 64]
 
 SUITE["rechunk"] = BenchmarkGroup()
 

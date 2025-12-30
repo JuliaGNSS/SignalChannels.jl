@@ -1,5 +1,7 @@
 module SignalChannels
 
+using PipeChannels: PipeChannel
+
 export SignalChannel,
     StreamWarning,
     TxStats,
@@ -16,7 +18,8 @@ export SignalChannel,
     calculate_periodogram,
     periodogram_liveplot,
     sdr_periodogram_liveplot,
-    sdr_record_to_file
+    sdr_record_to_file,
+    PipeChannel
 
 include("signal_channel.jl")
 include("channel_utilities.jl")

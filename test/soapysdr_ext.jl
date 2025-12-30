@@ -94,10 +94,10 @@ if Base.find_package("SoapySDR") !== nothing
                     println("Note: SoapyLoopback doesn't support actual TX (writeStream returns NOT_SUPPORTED)")
                     stats_channel, warning_channel = stream_data(device_args, config, tx_channel)
 
-                    # Send some data using the convenience method
-                    buffer = zeros(ComplexF32, mtu, 1)
+                    # Send some data
+                    buffer = FixedSizeMatrixDefault{ComplexF32}(zeros(ComplexF32, mtu, 1))
                     buffer[1:10, 1] .= ComplexF32(1.0 + 1.0im)
-                    put!(tx_channel, buffer)  # Tests the new AbstractMatrix put! method
+                    put!(tx_channel, buffer)
 
                     close(tx_channel)
 
