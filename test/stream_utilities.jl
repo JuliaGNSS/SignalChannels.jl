@@ -1,7 +1,7 @@
 module StreamUtilitiesTest
 
 using Test: @test, @testset
-using SignalChannels: SignalChannel, spawn_signal_channel_thread, membuffer
+using SignalChannels: SignalChannel, PipeChannel, spawn_signal_channel_thread, membuffer
 using FixedSizeArrays: FixedSizeMatrixDefault
 
 @testset "Stream Utilities" begin
@@ -103,8 +103,8 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         @test count == 50
     end
 
-    @testset "membuffer with generic Channel" begin
-        input_chan = Channel{Int}(0)
+    @testset "membuffer with generic PipeChannel" begin
+        input_chan = PipeChannel{Int}(16)
         buffered_chan = membuffer(input_chan, 10)
 
         task = @async begin

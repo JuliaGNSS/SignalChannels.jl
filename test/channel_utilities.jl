@@ -1,12 +1,12 @@
 module ChannelUtilitiesTest
 
 using Test: @test, @testset, @test_throws
-using SignalChannels: SignalChannel, consume_channel, tee, rechunk, write_to_file, read_from_file
+using SignalChannels: SignalChannel, PipeChannel, consume_channel, tee, rechunk, write_to_file, read_from_file
 using FixedSizeArrays: FixedSizeMatrixDefault
 
 @testset "Channel Utilities" begin
     @testset "consume_channel" begin
-        chan = Channel{Int}(10)
+        chan = PipeChannel{Int}(10)
         results = Int[]
 
         task = @async begin
@@ -79,8 +79,8 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         @test results2 == [ComplexF32(1, 0), ComplexF32(2, 0), ComplexF32(3, 0)]
     end
 
-    @testset "tee with generic Channel" begin
-        input_chan = Channel{Int}(10)
+    @testset "tee with generic PipeChannel" begin
+        input_chan = PipeChannel{Int}(10)
         out1, out2 = tee(input_chan)
 
         task = @async begin
