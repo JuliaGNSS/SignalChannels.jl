@@ -1,7 +1,7 @@
 module MatrixChannelTest
 
 using Test: @test, @testset, @test_throws
-using SignalChannels: SignalChannel
+using SignalChannels: SignalChannel, PipeChannel
 using FixedSizeArrays: FixedSizeMatrixDefault
 
 @testset "SignalChannel" begin
@@ -162,7 +162,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         # Test SignalChannel similar
         input = SignalChannel{ComplexF32}(1024, 4, 10)
 
-        # Default: unbuffered
+        # Default: buffer size 16
         output1 = similar(input)
         @test output1 isa SignalChannel{ComplexF32}
         @test output1.num_samples == 1024
@@ -174,13 +174,13 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         @test output2.num_samples == 1024
         @test output2.num_antenna_channels == 4
 
-        # Test generic Channel similar
-        input_chan = Channel{Int}(10)
+        # Test generic PipeChannel similar
+        input_chan = PipeChannel{Int}(10)
         output_chan1 = similar(input_chan)
-        @test output_chan1 isa Channel{Int}
+        @test output_chan1 isa PipeChannel{Int}
 
         output_chan2 = similar(input_chan, 20)
-        @test output_chan2 isa Channel{Int}
+        @test output_chan2 isa PipeChannel{Int}
     end
 end
 

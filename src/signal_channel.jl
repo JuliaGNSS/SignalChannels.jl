@@ -1,5 +1,6 @@
 import Base.close, Base.put!, Base.close, Base.isempty
 using FixedSizeArrays: FixedSizeMatrixDefault
+using PipeChannels: PipeChannel
 
 """
     StreamWarning
@@ -59,10 +60,15 @@ represented as a matrix with shape `(num_samples, 1)`.
 The use of FixedSizeMatrixDefault ensures that buffer dimensions cannot be changed after creation,
 providing additional safety guarantees.
 
+Uses a lock-free PipeChannel internally for zero-allocation performance in real-time applications.
+
+**Thread Safety**: Exactly ONE producer thread may call `put!` and exactly ONE consumer thread
+may call `take!`. Multiple producers or consumers will cause data races.
+
 # Fields
 - `num_samples::Int`: Number of samples per buffer (rows)
 - `num_antenna_channels::Int`: Number of antenna channels (columns)
-- `channel::Channel{FixedSizeMatrixDefault{T}}`: Underlying Julia Channel with fixed-size matrices
+- `channel::PipeChannel{FixedSizeMatrixDefault{T}}`: Underlying lock-free channel with fixed-size matrices
 
 # Examples
 ```julia
@@ -83,18 +89,18 @@ received = take!(chan)  # Returns FixedSizeMatrixDefault{ComplexF32} with size (
 struct SignalChannel{T} <: AbstractChannel{T}
     num_samples::Int
     num_antenna_channels::Int
-    channel::Channel{FixedSizeMatrixDefault{T}}
+    channel::PipeChannel{FixedSizeMatrixDefault{T}}
     function SignalChannel{T}(
         num_samples::Integer,
         num_antenna_channels::Integer=1,
-        sz::Integer=0,
+        sz::Integer=16,
     ) where {T}
-        return new(num_samples, num_antenna_channels, Channel{FixedSizeMatrixDefault{T}}(sz))
+        return new(num_samples, num_antenna_channels, PipeChannel{FixedSizeMatrixDefault{T}}(sz))
     end
 end
 
 """
-    SignalChannel{T}(func::Function, num_samples, num_antenna_channels=1, size=0; taskref=nothing, spawn=false)
+    SignalChannel{T}(func::Function, num_samples, num_antenna_channels=1, size=16; taskref=nothing, spawn=false)
 
 Construct a `SignalChannel` and execute `func` in a task, similar to `Channel(func)`.
 
@@ -102,7 +108,7 @@ Construct a `SignalChannel` and execute `func` in a task, similar to `Channel(fu
 - `func::Function`: Function to execute with the channel
 - `num_samples::Integer`: Number of samples per buffer
 - `num_antenna_channels::Integer`: Number of antenna channels (default: 1)
-- `size`: Channel buffer size (default 0)
+- `size`: Channel buffer size (default 16)
 - `taskref`: Optional reference to store the created task
 - `spawn`: If true, schedule task on any thread; if false, yield to it immediately
 
@@ -129,7 +135,7 @@ function SignalChannel{T}(
     func::Function,
     num_samples::Integer,
     num_antenna_channels::Integer=1,
-    size=0;
+    size=16;
     taskref=nothing,
     spawn=false,
 ) where {T}
@@ -210,56 +216,48 @@ Base.take!(c::SignalChannel) = Base.take!(c.channel)
 Base.close(c::SignalChannel, excp::Exception=Base.closed_exception()) =
     Base.close(c.channel, excp)
 Base.isopen(c::SignalChannel) = Base.isopen(c.channel)
-Base.close_chnl_on_taskdone(t::Task, c::SignalChannel) =
-    Base.close_chnl_on_taskdone(t, c.channel)
 Base.isready(c::SignalChannel) = Base.isready(c.channel)
 Base.isempty(c::SignalChannel) = Base.isempty(c.channel)
 Base.n_avail(c::SignalChannel) = Base.n_avail(c.channel)
 Base.isfull(c::SignalChannel) = Base.isfull(c.channel)
-
-Base.lock(c::SignalChannel) = Base.lock(c.channel)
-Base.lock(f, c::SignalChannel) = Base.lock(f, c.channel)
-Base.unlock(c::SignalChannel) = Base.unlock(c.channel)
-Base.trylock(c::SignalChannel) = Base.trylock(c.channel)
 Base.wait(c::SignalChannel) = Base.wait(c.channel)
-Base.eltype(c::SignalChannel) = Base.eltype(c.channel)
-Base.show(io::IO, c::SignalChannel) = Base.show(io, c.channel)
+Base.eltype(::Type{SignalChannel{T}}) where {T} = FixedSizeMatrixDefault{T}
 Base.iterate(c::SignalChannel, state=nothing) = Base.iterate(c.channel, state)
 Base.IteratorSize(::Type{<:SignalChannel}) = Base.SizeUnknown()
 
 """
-    Base.similar(c::SignalChannel{T}, [size::Int=0]) where {T}
+    Base.similar(c::SignalChannel{T}, [size::Int=16]) where {T}
 
 Create a new SignalChannel with the same dimensions as `c` but with optional buffer size.
 
 # Arguments
 - `c`: Input SignalChannel
-- `size`: Optional buffer size (default: 0, unbuffered)
+- `size`: Optional buffer size (default: 16)
 
 # Examples
 ```julia
 input = SignalChannel{ComplexF32}(1024, 4, 10)
-output = similar(input)        # Same dimensions, unbuffered
+output = similar(input)        # Same dimensions, buffer size 16
 buffered = similar(input, 32)  # Same dimensions, buffer size 32
 ```
 """
-Base.similar(c::SignalChannel{T}, size::Int=0) where {T} =
+Base.similar(c::SignalChannel{T}, size::Int=16) where {T} =
     SignalChannel{T}(c.num_samples, c.num_antenna_channels, size)
 
 """
-    Base.similar(c::Channel{T}, [size::Int=0]) where {T}
+    Base.similar(c::PipeChannel{T}, [size::Int=16]) where {T}
 
-Create a new Channel with the same element type as `c` but with optional buffer size.
+Create a new PipeChannel with the same element type as `c` but with optional buffer size.
 
 # Arguments
-- `c`: Input Channel
-- `size`: Buffer size (default: 0, unbuffered)
+- `c`: Input PipeChannel
+- `size`: Buffer size (default: 16)
 
 # Examples
 ```julia
-input = Channel{Int}(10)
-output = similar(input)      # Same type, unbuffered
+input = PipeChannel{Int}(10)
+output = similar(input)      # Same type, buffer size 16
 buffered = similar(input, 20) # Same type, buffer size 20
 ```
 """
-Base.similar(c::Channel{T}, size::Int=0) where {T} = Channel{T}(size)
+Base.similar(c::PipeChannel{T}, size::Int=16) where {T} = PipeChannel{T}(size)

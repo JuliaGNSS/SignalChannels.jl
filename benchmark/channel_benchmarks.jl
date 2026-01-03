@@ -40,6 +40,9 @@ const CHANNEL_BUFFER_SIZES = [1, 4, 16, 64, 256, 1024]
 
 SUITE["channel"] = BenchmarkGroup()
 
+# For versions <= 3.0.9, SignalChannel used Julia's Channel internally
+# For versions > 3.0.9, SignalChannel uses PipeChannel internally
+# The benchmark interface remains the same (SignalChannel API)
 for buf_size in CHANNEL_BUFFER_SIZES
     SUITE["channel"]["buffer=$buf_size"] = @benchmarkable(
         run_channel_benchmark!(ch, data, CHANNEL_NUM_BUFFERS),

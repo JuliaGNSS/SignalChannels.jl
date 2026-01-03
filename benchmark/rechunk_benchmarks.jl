@@ -1,6 +1,10 @@
 using BenchmarkTools
 using SignalChannels
 
+# PACKAGE_VERSION is provided by AirspeedVelocity or by benchmarks.jl
+# In v3.0.9+, SignalChannel uses PipeChannel internally (lock-free, requires capacity > 0)
+const RECHUNK_USE_PIPECHANNEL = @isdefined(PACKAGE_VERSION) ? PACKAGE_VERSION > v"3.0.9" : true
+
 # Number of buffers to push through the pipeline per benchmark iteration
 const NUM_BUFFERS = 1000
 
@@ -42,7 +46,8 @@ function run_pipeline!(input, output, buffers)
 end
 
 # Channel sizes to test - reduced set for faster CI
-const RECHUNK_CHANNEL_SIZES = [0, 1, 4, 16, 64]
+# PipeChannel requires capacity > 0, so exclude 0 for new versions
+const RECHUNK_CHANNEL_SIZES = RECHUNK_USE_PIPECHANNEL ? [1, 4, 16, 64] : [0, 1, 4, 16, 64]
 
 SUITE["rechunk"] = BenchmarkGroup()
 
