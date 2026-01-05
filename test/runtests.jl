@@ -1,4 +1,5 @@
 include("signal_channel.jl")
+include("rechunk.jl")
 include("channel_utilities.jl")
 include("stream_utilities.jl")
 include("periodogram.jl")

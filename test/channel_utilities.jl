@@ -1,7 +1,7 @@
 module ChannelUtilitiesTest
 
 using Test: @test, @testset, @test_throws
-using SignalChannels: SignalChannel, PipeChannel, consume_channel, tee, rechunk, write_to_file, read_from_file
+using SignalChannels: SignalChannel, PipeChannel, consume_channel, tee, write_to_file, read_from_file
 using FixedSizeArrays: FixedSizeMatrixDefault
 
 @testset "Channel Utilities" begin
@@ -111,88 +111,6 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         wait(task2)
         @test results1 == [1, 2, 3, 4, 5]
         @test results2 == [1, 2, 3, 4, 5]
-    end
-
-    @testset "rechunk - upsampling" begin
-        # Convert 100-sample chunks to 250-sample chunks
-        input_chan = SignalChannel{ComplexF32}(100, 2)
-        output_chan = rechunk(input_chan, 250)
-
-        task = @async begin
-            for i in 1:5
-                data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 100, 2))
-                put!(input_chan, data)
-            end
-            close(input_chan)
-        end
-
-        results = []
-        for data in output_chan
-            @test size(data) == (250, 2)
-            push!(results, data)
-        end
-
-        wait(task)
-        # 5 chunks of 100 samples = 500 samples total
-        # 500 samples / 250 per chunk = 2 output chunks
-        @test length(results) == 2
-
-        # First chunk should have values from chunks 1 and 2, plus part of 3
-        @test all(results[1][1:100, :] .== ComplexF32(1, 0))
-        @test all(results[1][101:200, :] .== ComplexF32(2, 0))
-        @test all(results[1][201:250, :] .== ComplexF32(3, 0))
-    end
-
-    @testset "rechunk - downsampling" begin
-        # Convert 1000-sample chunks to 300-sample chunks
-        input_chan = SignalChannel{ComplexF32}(1000, 2)
-        output_chan = rechunk(input_chan, 300)
-
-        task = @async begin
-            for i in 1:2
-                data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 1000, 2))
-                put!(input_chan, data)
-            end
-            close(input_chan)
-        end
-
-        results = []
-        for data in output_chan
-            @test size(data) == (300, 2)
-            push!(results, data)
-        end
-
-        wait(task)
-        # 2 chunks of 1000 samples = 2000 samples total
-        # 2000 samples / 300 per chunk = 6 output chunks (with some remainder)
-        @test length(results) == 6
-    end
-
-    @testset "rechunk preserves data" begin
-        input_chan = SignalChannel{Float64}(10, 1)
-        output_chan = rechunk(input_chan, 25)
-
-        # Send exactly 50 samples (should produce 2 chunks of 25)
-        task = @async begin
-            for i in 1:5
-                data = FixedSizeMatrixDefault{Float64}(fill(Float64(i), 10, 1))
-                put!(input_chan, data)
-            end
-            close(input_chan)
-        end
-
-        all_data = Float64[]
-        for data in output_chan
-            append!(all_data, data[:, 1])
-        end
-
-        wait(task)
-        @test length(all_data) == 50
-        @test all_data[1:10] == fill(1.0, 10)
-        @test all_data[11:20] == fill(2.0, 10)
-        @test all_data[21:30] == fill(3.0, 10)
-        @test all_data[31:40] == fill(4.0, 10)
-        @test all_data[41:50] == fill(5.0, 10)
     end
 
     @testset "write_to_file" begin
@@ -364,53 +282,6 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
         # The producer should fail when trying to put to the closed channel
         @test_throws Exception wait(producer_task)
-    end
-
-    @testset "rechunk buffer pool integrity" begin
-        # This test verifies that the buffer pool doesn't have aliasing issues.
-        # With channel_size=16, we have 18 buffers. Push enough data to cycle
-        # through the buffer pool multiple times to catch any aliasing bugs.
-        #
-        # The bug scenario: if we only had channel_size + 1 buffers, then when
-        # the channel is full and the consumer is slow, we could overwrite a
-        # buffer that's still being read.
-
-        num_samples = 20000
-        num_chunks = 100  # Enough to cycle buffer pool many times
-        channel_size = 16
-
-        # Create data with unique values so we can detect corruption
-        all_original = [FixedSizeMatrixDefault{ComplexF32}(ComplexF32.(i .+ (1:num_samples) ./ num_samples, 0) |> x -> reshape(x, :, 1)) for i in 1:num_chunks]
-
-        input = SignalChannel{ComplexF32}(num_samples, 1, channel_size)
-        intermediate = rechunk(input, 2048, channel_size)
-        output = rechunk(intermediate, num_samples, channel_size)
-
-        producer = Threads.@spawn begin
-            for data in all_original
-                put!(input, data)
-            end
-            close(input)
-        end
-        bind(input, producer)  # Propagate errors from producer to close the channel
-
-        # Collect results
-        results = Vector{Matrix{ComplexF32}}()
-        for chunk in output
-            push!(results, Matrix(chunk))
-        end
-
-        wait(producer)
-
-        # Flatten and compare
-        original_flat = vcat([vec(d) for d in all_original]...)
-        result_flat = vcat([vec(r) for r in results]...)
-
-        # We expect some sample loss due to incomplete final chunks, but what
-        # we do get should match exactly
-        compare_length = length(result_flat)
-        @test compare_length > 0
-        @test original_flat[1:compare_length] == result_flat
     end
 end
 

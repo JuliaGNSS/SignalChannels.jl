@@ -73,69 +73,6 @@ function tee(in::AbstractChannel, channel_size::Integer=16)
 end
 
 """
-    rechunk(in::SignalChannel{T}, chunk_size::Integer) where {T<:Number}
-
-Converts a stream of chunks with one size to a stream of chunks with a different size.
-This is useful for adapting data chunk sizes between different processing stages.
-
-The number of antenna channels is preserved from the input channel.
-
-Based on benchmarks in benchmark/benchmarks.jl a channel size of 16 is a sweet spot.
-
-# Arguments
-- `in`: Input SignalChannel
-- `chunk_size`: Desired number of samples in each output chunk
-
-# Examples
-```julia
-# Convert 512-sample chunks to 1024-sample chunks
-input = SignalChannel{ComplexF32}(512, 4)
-output = rechunk(input, 1024)
-```
-"""
-function rechunk(in::SignalChannel{T}, chunk_size::Integer, channel_size=16) where {T<:Number}
-    out = SignalChannel{T}(chunk_size, in.num_antenna_channels, channel_size)
-    task = Threads.@spawn begin
-        chunk_filled = 0
-        chunk_idx = 1
-        num_buffers = channel_size + 2
-        # We need channel_size + 2 buffers:
-        # - channel_size buffers can be sitting in the output channel
-        # - 1 buffer being written to
-        # - 1 buffer being read by the (single) consumer
-        chunks = [FixedSizeMatrixDefault{T}(undef, chunk_size, in.num_antenna_channels) for _ in 1:num_buffers]
-
-        for data in in
-            data_offset = 0
-            data_remaining = size(data, 1)
-
-            while data_remaining > 0
-                samples_wanted = chunk_size - chunk_filled
-                samples_taken = min(data_remaining, samples_wanted)
-
-                # Slice assignment with view on right side - no allocations
-                chunks[chunk_idx][chunk_filled+1:chunk_filled+samples_taken, :] =
-                    view(data, data_offset+1:data_offset+samples_taken, :)
-
-                chunk_filled += samples_taken
-                data_offset += samples_taken
-                data_remaining -= samples_taken
-
-                if chunk_filled >= chunk_size
-                    put!(out, chunks[chunk_idx])
-                    chunk_idx = mod1(chunk_idx + 1, num_buffers)
-                    chunk_filled = 0
-                end
-            end
-        end
-        close(out)
-    end
-    bind(out, task)
-    bind(in, task)  # Propagate errors upstream
-    return out
-end
-
-"""
     write_to_file(in::SignalChannel{T}, file_path::String) where {T<:Number}
 
 Consume a channel and write to file(s). Multiple channels will be written to different files.

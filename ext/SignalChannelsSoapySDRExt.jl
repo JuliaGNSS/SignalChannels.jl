@@ -138,8 +138,8 @@ function read_buffer!(
 end
 
 """
-    stream_data([T=ComplexF32], dev_args, config::SDRChannelConfig, end_condition::Union{Integer,Base.Event}; leadin_buffers=16, warning_buffer_size=16, buffer_time=1u"s")
-    stream_data([T=ComplexF32], dev_args, configs::Tuple{SDRChannelConfig,...}, end_condition::Union{Integer,Base.Event}; leadin_buffers=16, warning_buffer_size=16, buffer_time=1u"s")
+    stream_data([T=ComplexF32], dev_args, config::SDRChannelConfig, end_condition::Union{Integer,Base.Event}; chunk_size=nothing, leadin_buffers=16, warning_buffer_size=16, buffer_time=1u"s")
+    stream_data([T=ComplexF32], dev_args, configs::Tuple{SDRChannelConfig,...}, end_condition::Union{Integer,Base.Event}; chunk_size=nothing, leadin_buffers=16, warning_buffer_size=16, buffer_time=1u"s")
 
 Creates an SDR device, configures it, and streams RX data.
 
@@ -153,25 +153,31 @@ task detects this, stops reading, and then closes the device cleanly.
 - `config`: Single `SDRChannelConfig` for single-channel streaming
 - `configs`: Tuple of `SDRChannelConfig` for multi-channel streaming (one per antenna channel)
 - `end_condition::Union{Integer,Base.Event}`: Either total number of samples to read, or an Event to signal stop
+- `chunk_size::Union{Integer,Nothing}`: Output chunk size. If `nothing` (default), uses the device MTU directly.
+  If specified, rechunks the data to the given size. When `chunk_size` equals MTU, zero-copy passthrough is used.
 - `leadin_buffers::Integer`: Number of initial buffers to discard (default: 16)
 - `warning_buffer_size::Integer`: Size of the warning channel buffer (default: 16)
 - `buffer_time`: Time duration of data to buffer (default: `1u"s"`). Provides headroom for downstream processing delays.
 
 # Returns
-- `Tuple{SignalChannel{T}, Channel{StreamWarning}}`: Tuple of (signal channel, warning channel). The MTU can be accessed via `signal_channel.num_samples`.
+- `Tuple{SignalChannel{T}, Channel{StreamWarning}}`: Tuple of (signal channel, warning channel).
+  The chunk size can be accessed via `signal_channel.num_samples`.
 
 # Examples
 ```julia
 using SignalChannels
 using SoapySDR
 
-# Single channel streaming (defaults to ComplexF32)
+# Single channel streaming (defaults to ComplexF32, uses device MTU)
 config = SDRChannelConfig(
     sample_rate = 5e6u"Hz",
     frequency = 1.57542e9u"Hz",
     gain = 50u"dB"
 )
 data_channel, warning_channel = stream_data(first(Devices()), config, 10_000_000)
+
+# Stream with specific chunk size (useful for FFT-friendly sizes)
+data_channel, warning_channel = stream_data(first(Devices()), config, 10_000_000; chunk_size=8192)
 
 # Multi-channel streaming with different frequencies
 configs = (
@@ -188,12 +194,9 @@ data_channel, warning_channel = stream_data(
     10_000_000
 )
 
-# Access MTU if needed
-mtu = data_channel.num_samples
-
 # Process data - if an error occurs here, the device closes cleanly
 for data in data_channel
-    # Process data (each chunk has `mtu` samples)
+    # Process data
 end
 ```
 """
@@ -201,6 +204,7 @@ function SignalChannels.stream_data(
     dev_args,
     config::SignalChannels.SDRChannelConfig,
     end_condition::Union{Integer,Base.Event};
+    chunk_size::Union{Integer,Nothing}=nothing,
     leadin_buffers::Integer=16,
     warning_buffer_size::Integer=16,
     buffer_time::Unitful.Time=1u"s",
@@ -208,7 +212,7 @@ function SignalChannels.stream_data(
     # Default to ComplexF32 for performance (avoids runtime type inference)
     return SignalChannels.stream_data(
         ComplexF32, dev_args, (config,), end_condition;
-        leadin_buffers, warning_buffer_size, buffer_time
+        chunk_size, leadin_buffers, warning_buffer_size, buffer_time
     )
 end
 
@@ -216,6 +220,7 @@ function SignalChannels.stream_data(
     dev_args,
     configs::NTuple{N,SignalChannels.SDRChannelConfig},
     end_condition::Union{Integer,Base.Event};
+    chunk_size::Union{Integer,Nothing}=nothing,
     leadin_buffers::Integer=16,
     warning_buffer_size::Integer=16,
     buffer_time::Unitful.Time=1u"s",
@@ -223,7 +228,7 @@ function SignalChannels.stream_data(
     # Default to ComplexF32 for performance (avoids runtime type inference)
     return SignalChannels.stream_data(
         ComplexF32, dev_args, configs, end_condition;
-        leadin_buffers, warning_buffer_size, buffer_time
+        chunk_size, leadin_buffers, warning_buffer_size, buffer_time
     )
 end
 
@@ -232,13 +237,14 @@ function SignalChannels.stream_data(
     dev_args,
     config::SignalChannels.SDRChannelConfig,
     end_condition::Union{Integer,Base.Event};
+    chunk_size::Union{Integer,Nothing}=nothing,
     leadin_buffers::Integer=16,
     warning_buffer_size::Integer=16,
     buffer_time::Unitful.Time=1u"s",
 ) where {T<:Number}
     return SignalChannels.stream_data(
         T, dev_args, (config,), end_condition;
-        leadin_buffers, warning_buffer_size, buffer_time
+        chunk_size, leadin_buffers, warning_buffer_size, buffer_time
     )
 end
 
@@ -247,6 +253,7 @@ function SignalChannels.stream_data(
     dev_args,
     configs::NTuple{N,SignalChannels.SDRChannelConfig},
     end_condition::Union{Integer,Base.Event};
+    chunk_size::Union{Integer,Nothing}=nothing,
     leadin_buffers::Integer=16,
     warning_buffer_size::Integer=16,
     buffer_time::Unitful.Time=1u"s",
@@ -256,7 +263,6 @@ function SignalChannels.stream_data(
               "Start Julia with `julia --threads=auto` or set JULIA_NUM_THREADS environment variable.")
     end
 
-    # Validate all configs have the same sample_rate (required for multi-channel streams)
     sample_rate = first(configs).sample_rate
     for (i, config) in enumerate(configs)
         if config.sample_rate != sample_rate
@@ -270,89 +276,76 @@ function SignalChannels.stream_data(
 
     task = Threads.@spawn begin
         SoapySDR.Device(dev_args) do dev
-            # Configure each RX channel with its config
             rx_channels = [dev.rx[i] for i in 1:N]
             for (i, (rx, config)) in enumerate(zip(rx_channels, configs))
                 apply_config!(rx, config; channel_idx=i)
             end
 
-            # Create stream with all configured channels (SoapySDR.Stream expects AbstractVector)
             stream = SoapySDR.Stream(T, rx_channels)
             mtu = stream.mtu
             nchannels = stream.nchannels
 
-            # Calculate number of buffers from buffer_time
-            # buffers_in_flight = ceil(buffer_time * sample_rate / mtu)
-            buffers_in_flight = ceil(Int, upreferred(buffer_time * sample_rate) / mtu)
+            # Use MTU as output chunk size if not specified
+            # rechunk_foreach! handles zero-copy passthrough when mtu == output_chunk_size
+            output_chunk_size = chunk_size === nothing ? Int(mtu) : Int(chunk_size)
 
-            # Create the actual signal channel now that we know the MTU
-            signal_channel = SignalChannel{T}(mtu, nchannels, buffers_in_flight)
-
-            # Send the channel back to the caller
+            buffers_in_flight = ceil(Int, upreferred(buffer_time * sample_rate) / output_chunk_size)
+            signal_channel = SignalChannel{T}(output_chunk_size, nchannels, buffers_in_flight)
             put!(setup_channel, signal_channel)
             close(setup_channel)
 
-            # Pre-allocate buffer pool with zeros (not undef) to avoid NaN/garbage if SDR doesn't fully fill buffers
-            # We need buffers_in_flight + 2 buffers:
-            # - buffers_in_flight buffers can be sitting in the output channel
-            # - 1 buffer being written to by read_buffer!
-            # - 1 buffer being read by the (single) consumer
-            num_buffers = buffers_in_flight + 2
-            buffer_pool = [FixedSizeMatrixDefault{T}(fill(zero(T), mtu, nchannels)) for _ in 1:num_buffers]
-            buffer_idx = 1
-            total_samples_read = 0
-            buff_idx = 0
-
-            # Pre-allocate buffers for read_buffer! to avoid allocations in the hot path
             buff_ptrs = Vector{Ptr{T}}(undef, nchannels)
             out_flags = Ref{Cint}()
             timens = Ref{Clonglong}()
-
-            # Pre-compute sample_rate value to avoid allocations in hot path
             sample_rate_val = ustrip(u"Hz", sample_rate)
+            total_samples_read = 0
+
+            # RechunkState handles buffer pooling for output chunks
+            # Max outputs per MTU read: could complete partial + produce full chunks
+            max_outputs = cld(Int(mtu), output_chunk_size) + 1
+            num_output_buffers = buffers_in_flight + max_outputs + 2
+            rechunk_state = SignalChannels.RechunkState{T}(output_chunk_size, nchannels, num_output_buffers; max_outputs_per_input=max_outputs)
+
+            # In passthrough mode (mtu == output_chunk_size), rechunk! returns the input
+            # buffer directly without copying, so we need buffers_in_flight + 2 input buffers
+            # to avoid overwriting buffers still in the channel or being read by consumers.
+            # When not in passthrough mode, rechunk! copies to its internal buffer pool,
+            # so fewer input buffers would suffice, but we use the same count for simplicity.
+            num_input_buffers = buffers_in_flight + 2
+            input_buffer_pool = [FixedSizeMatrixDefault{T}(fill(zero(T), mtu, nchannels)) for _ in 1:num_input_buffers]
+            input_buffer_idx = 1
 
             SoapySDR.activate!(stream) do
                 timeout_us = Int(uconvert(u"μs", 0.9u"s").val)
 
-                # Leadin - discard initial buffers
+                # Leadin: discard initial buffers
                 for _ in 1:leadin_buffers
-                    read_buffer!(stream, buffer_pool[1], timeout_us, buff_ptrs, out_flags, timens)
+                    read_buffer!(stream, input_buffer_pool[1], timeout_us, buff_ptrs, out_flags, timens)
                 end
 
                 while true
-                    # Check end condition
                     if isa(end_condition, Integer)
-                        buff_idx * mtu >= end_condition && break
+                        total_samples_read >= end_condition && break
                     else
                         end_condition.set && break
                     end
-
-                    # Check if downstream closed the channel (e.g., due to an error)
                     isopen(signal_channel) || break
 
-                    buff = buffer_pool[buffer_idx]
+                    buff = input_buffer_pool[input_buffer_idx]
                     nread = read_buffer!(stream, buff, timeout_us, buff_ptrs, out_flags, timens)
 
                     if nread < 0
-                        expected_sample_seconds = total_samples_read / sample_rate_val
-                        time_str = format_time(expected_sample_seconds)
-
-                        if nread == SoapySDR.SOAPY_SDR_OVERFLOW
-                            push_warning!(warning_channel, SignalChannels.StreamWarning(:overflow, time_str))
-                        elseif nread == SoapySDR.SOAPY_SDR_TIMEOUT
-                            push_warning!(warning_channel, SignalChannels.StreamWarning(:timeout, time_str))
-                        else
-                            push_warning!(warning_channel, SignalChannels.StreamWarning(:error, time_str, Int(nread), SoapySDR.error_to_string(nread)))
-                        end
-                        # An error leaves corrupted data (either zeros or outdated samples) inside the buffer
-                        # Let's not put it onto the pipe
+                        handle_sdr_error!(warning_channel, nread, total_samples_read, sample_rate_val)
                         continue
                     end
                     total_samples_read += nread
 
-                    put!(signal_channel, buff)
-                    buffer_idx = mod1(buffer_idx + 1, num_buffers)
-                    buff_idx += 1
+                    # Rechunk and put outputs (zero-copy passthrough when mtu == output_chunk_size)
+                    outputs = SignalChannels.rechunk!(rechunk_state, buff)
+                    if !isempty(outputs)
+                        put!(signal_channel.channel, outputs)
+                    end
+                    input_buffer_idx = mod1(input_buffer_idx + 1, num_input_buffers)
                 end
             end
             close(signal_channel)
@@ -362,13 +355,23 @@ function SignalChannels.stream_data(
 
     bind(setup_channel, task)
     bind(warning_channel, task)
-
-    # Wait for the setup to complete and get the signal channel
     signal_channel = take!(setup_channel)
-
     bind(signal_channel, task)
 
     return (signal_channel, warning_channel)
+end
+
+# Helper to handle SDR read errors
+function handle_sdr_error!(warning_channel, nread, total_samples_read, sample_rate_val)
+    time_str = format_time(total_samples_read / sample_rate_val)
+    if nread == SoapySDR.SOAPY_SDR_OVERFLOW
+        push_warning!(warning_channel, SignalChannels.StreamWarning(:overflow, time_str))
+    elseif nread == SoapySDR.SOAPY_SDR_TIMEOUT
+        push_warning!(warning_channel, SignalChannels.StreamWarning(:timeout, time_str))
+    else
+        push_warning!(warning_channel, SignalChannels.StreamWarning(:error, time_str, Int(nread), SoapySDR.error_to_string(nread)))
+    end
+    return nothing
 end
 
 """
@@ -486,8 +489,9 @@ function SignalChannels.stream_data(
 
             # Create stream with all configured channels
             stream = SoapySDR.Stream(T, tx_channels)
-            total_samples_written = 0
+            mtu = stream.mtu
             nchannels = stream.nchannels
+            total_samples_written = 0
 
             # Pre-allocate buffers to avoid allocations in the hot path
             buff_ptrs = Vector{Ptr{T}}(undef, nchannels)
@@ -496,53 +500,82 @@ function SignalChannels.stream_data(
             # Pre-compute sample_rate value to avoid allocations in hot path
             sample_rate_val = ustrip(u"Hz", sample_rate)
 
+            # Batch take size: if input chunks are smaller than MTU, batch take enough
+            # to fill at least one MTU. This reduces per-chunk overhead.
+            input_chunk_size = in.num_samples
+            batch_size = cld(Int(mtu), input_chunk_size)
+
+            # RechunkState to convert input chunks to MTU-sized chunks for efficient SDR writes
+            # rechunk! handles zero-copy passthrough when input chunk size == MTU
+            # After batch take, we process batch_size * input_chunk_size samples at once
+            max_outputs_per_batch = cld(batch_size * input_chunk_size, Int(mtu)) + 1
+            # For TX we don't need as many buffers since we write synchronously
+            num_buffers = max_outputs_per_batch + 2
+            rechunk_state = SignalChannels.RechunkState{T}(Int(mtu), nchannels, num_buffers; max_outputs_per_input=max_outputs_per_batch)
+
+            # Pre-allocate batch buffer for batch takes
+            input_batch = Vector{FixedSizeMatrixDefault{T}}(undef, batch_size)
+
             SoapySDR.activate!(stream) do
                 timeout_us = Int(uconvert(u"μs", 0.9u"s").val)
 
-                for buff in in
+                while isopen(in) || isready(in)
                     # Check if output channels are closed - if so, stop transmitting
                     if !isopen(stats_channel) || !isopen(warning_channel)
                         break
                     end
 
-                    samples_to_write = size(buff, 1)
-                    total_nwritten = 0
+                    # Batch take from input channel (blocks until all batch_size items available)
+                    try
+                        take!(in, input_batch)
+                    catch e
+                        e isa InvalidStateException && break
+                        rethrow()
+                    end
 
-                    GC.@preserve buff while total_nwritten < samples_to_write
-                        # Update pointers for current write position
-                        for i in 1:nchannels
-                            buff_ptrs[i] = pointer(buff, (i - 1) * samples_to_write + total_nwritten + 1)
-                        end
-                        out_flags[] = Cint(0)
-                        nwritten = SoapySDR.SoapySDRDevice_writeStream(
-                            stream.d,
-                            stream,
-                            pointer(buff_ptrs),
-                            samples_to_write - total_nwritten,
-                            out_flags,
-                            0,
-                            timeout_us,
-                        )
+                    # Rechunk entire batch to MTU-sized buffers (zero-copy passthrough when sizes match)
+                    outputs = SignalChannels.rechunk!(rechunk_state, input_batch)
 
-                        if nwritten < 0
-                            expected_sample_seconds = total_samples_written / sample_rate_val
-                            time_str = format_time(expected_sample_seconds)
+                    for buff in outputs
+                        samples_to_write = size(buff, 1)
+                        total_nwritten = 0
 
-                            if nwritten == SoapySDR.SOAPY_SDR_UNDERFLOW
-                                push_warning!(warning_channel, SignalChannels.StreamWarning(:underflow, time_str))
-                            elseif nwritten == SoapySDR.SOAPY_SDR_TIMEOUT
-                                push_warning!(warning_channel, SignalChannels.StreamWarning(:timeout, time_str))
-                            else
-                                push_warning!(warning_channel, SignalChannels.StreamWarning(:error, time_str, Int(nwritten), SoapySDR.error_to_string(nwritten)))
+                        GC.@preserve buff while total_nwritten < samples_to_write
+                            # Update pointers for current write position
+                            for j in 1:nchannels
+                                buff_ptrs[j] = pointer(buff, (j - 1) * samples_to_write + total_nwritten + 1)
                             end
-                            break
-                        else
-                            total_nwritten += nwritten
-                            total_samples_written += nwritten
+                            out_flags[] = Cint(0)
+                            nwritten = SoapySDR.SoapySDRDevice_writeStream(
+                                stream.d,
+                                stream,
+                                pointer(buff_ptrs),
+                                samples_to_write - total_nwritten,
+                                out_flags,
+                                0,
+                                timeout_us,
+                            )
+
+                            if nwritten < 0
+                                expected_sample_seconds = total_samples_written / sample_rate_val
+                                time_str = format_time(expected_sample_seconds)
+
+                                if nwritten == SoapySDR.SOAPY_SDR_UNDERFLOW
+                                    push_warning!(warning_channel, SignalChannels.StreamWarning(:underflow, time_str))
+                                elseif nwritten == SoapySDR.SOAPY_SDR_TIMEOUT
+                                    push_warning!(warning_channel, SignalChannels.StreamWarning(:timeout, time_str))
+                                else
+                                    push_warning!(warning_channel, SignalChannels.StreamWarning(:error, time_str, Int(nwritten), SoapySDR.error_to_string(nwritten)))
+                                end
+                                break
+                            else
+                                total_nwritten += nwritten
+                                total_samples_written += nwritten
+                            end
                         end
                     end
 
-                    # Push stats after each buffer is transmitted (blocking)
+                    # Push stats after each batch is processed (blocking)
                     # If the channel is closed, this will throw and we exit
                     try
                         put!(stats_channel, SignalChannels.TxStats(total_samples_written))
