@@ -8,6 +8,11 @@ export SignalChannel,
     consume_channel,
     tee,
     rechunk,
+    RechunkState,
+    rechunk!,
+    get_partial_buffer,
+    reset!,
+    get_num_antenna_channels,
     write_to_file,
     read_from_file,
     spawn_signal_channel_thread,
@@ -22,6 +27,7 @@ export SignalChannel,
     PipeChannel
 
 include("signal_channel.jl")
+include("rechunk.jl")
 include("channel_utilities.jl")
 include("stream_utilities.jl")
 include("periodogram.jl")
