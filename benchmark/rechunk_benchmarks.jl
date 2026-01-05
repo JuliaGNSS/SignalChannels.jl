@@ -1,5 +1,6 @@
 using BenchmarkTools
 using SignalChannels
+using FixedSizeArrays: FixedSizeMatrixDefault
 
 # Number of buffers to push through the pipeline per benchmark iteration
 const NUM_BUFFERS = 1000
@@ -14,8 +15,10 @@ function setup_pipeline(input_size::Int, output_size::Int, output_channel_size::
     # Create the rechunk pipeline - this spawns the task but it blocks waiting for input
     output = rechunk(input, output_size, output_channel_size)
 
-    # Pre-allocate input buffers to avoid allocation during benchmark
-    buffers = [zeros(ComplexF32, input_size, 1) for _ in 1:NUM_BUFFERS]
+    # Pre-allocate input buffers as FixedSizeMatrixDefault to avoid allocation on put!
+    # Using Matrix would cause a conversion allocation on every put! call,
+    # hiding the true channel performance characteristics
+    buffers = [FixedSizeMatrixDefault{ComplexF32}(zeros(ComplexF32, input_size, 1)) for _ in 1:NUM_BUFFERS]
 
     return (input, output, buffers)
 end

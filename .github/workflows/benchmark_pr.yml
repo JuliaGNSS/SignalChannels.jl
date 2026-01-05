@@ -12,4 +12,5 @@ jobs:
       - uses: MilesCranmer/AirspeedVelocity.jl@action-v1
         with:
           julia-version: '1'
+          extra-pkgs: FixedSizeArrays
           bench-on: ${{github.event.pull_request.head.sha}}
