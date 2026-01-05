@@ -1,5 +1,26 @@
 # Changelog
 
+# [5.0.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v4.0.1...v5.0.0) (2026-01-05)
+
+
+* refactor!: use PipeChannel instead of Channel for lock-free performance ([a151677](https://github.com/JuliaGNSS/SignalChannels.jl/commit/a15167719a8c1cc08a5574ceab03b0c2ba560fae))
+
+
+### BREAKING CHANGES
+
+* SignalChannel now uses PipeChannel internally instead of
+Julia's built-in Channel. This provides zero-allocation performance in the
+hot path but requires exactly one producer and one consumer thread.
+
+Changes:
+- SignalChannel now wraps PipeChannel instead of Channel
+- Default buffer size changed from 0 to 16 (PipeChannel requires positive capacity)
+- Removed rechunk_lockfree (now redundant since rechunk is lock-free)
+- Removed locking methods (lock, unlock, trylock) as PipeChannel is lock-free
+- Updated all tests and benchmarks to use PipeChannel for generic channel tests
+- Added PACKAGE_VERSION support in benchmarks for version-aware testing
+- PipeChannel now subtypes AbstractChannel{T} for compatibility
+
 ## [4.0.1](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v4.0.0...v4.0.1) (2026-01-05)
 
 
