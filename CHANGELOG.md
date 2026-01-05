@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.1](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v4.0.0...v4.0.1) (2026-01-05)
+
+
+### Bug Fixes
+
+* **benchmark:** use FixedSizeMatrixDefault to avoid put! conversion allocations ([c002824](https://github.com/JuliaGNSS/SignalChannels.jl/commit/c002824bfccdf177c824f19171f5f749aed2ed8e))
+
 # [4.0.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v3.0.9...v4.0.0) (2025-12-19)
 
 
