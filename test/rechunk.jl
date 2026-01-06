@@ -281,7 +281,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
     @testset "rechunk channel - upsampling" begin
         # Convert 100-sample chunks to 250-sample chunks
-        input_chan = SignalChannel{ComplexF32}(100, 2)
+        input_chan = SignalChannel{ComplexF32,2}(100)
         output_chan = rechunk(input_chan, 250)
 
         task = @async begin
@@ -311,7 +311,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
     @testset "rechunk channel - downsampling" begin
         # Convert 1000-sample chunks to 300-sample chunks
-        input_chan = SignalChannel{ComplexF32}(1000, 2)
+        input_chan = SignalChannel{ComplexF32,2}(1000)
         output_chan = rechunk(input_chan, 300)
 
         task = @async begin
@@ -335,7 +335,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
     end
 
     @testset "rechunk channel - preserves data" begin
-        input_chan = SignalChannel{Float64}(10, 1)
+        input_chan = SignalChannel{Float64,1}(10)
         output_chan = rechunk(input_chan, 25)
 
         # Send exactly 50 samples (should produce 2 chunks of 25)
@@ -377,7 +377,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         # Create data with unique values so we can detect corruption
         all_original = [FixedSizeMatrixDefault{ComplexF32}(ComplexF32.(i .+ (1:num_samples) ./ num_samples, 0) |> x -> reshape(x, :, 1)) for i in 1:num_chunks]
 
-        input = SignalChannel{ComplexF32}(num_samples, 1, channel_size)
+        input = SignalChannel{ComplexF32,1}(num_samples, channel_size)
         intermediate = rechunk(input, 2048, channel_size)
         output = rechunk(intermediate, num_samples, channel_size)
 

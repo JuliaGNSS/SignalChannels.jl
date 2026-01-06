@@ -271,7 +271,7 @@ function SignalChannels.stream_data(
         end
     end
 
-    setup_channel = Channel{SignalChannel{T}}(1)
+    setup_channel = Channel{SignalChannel{T,N}}(1)
     warning_channel = Channel{SignalChannels.StreamWarning}(warning_buffer_size)
 
     task = Threads.@spawn begin
@@ -290,7 +290,7 @@ function SignalChannels.stream_data(
             output_chunk_size = chunk_size === nothing ? Int(mtu) : Int(chunk_size)
 
             buffers_in_flight = ceil(Int, upreferred(buffer_time * sample_rate) / output_chunk_size)
-            signal_channel = SignalChannel{T}(output_chunk_size, nchannels, buffers_in_flight)
+            signal_channel = SignalChannel{T,N}(output_chunk_size, buffers_in_flight)
             put!(setup_channel, signal_channel)
             close(setup_channel)
 
@@ -304,7 +304,7 @@ function SignalChannels.stream_data(
             # Max outputs per MTU read: could complete partial + produce full chunks
             max_outputs = cld(Int(mtu), output_chunk_size) + 1
             num_output_buffers = buffers_in_flight + max_outputs + 2
-            rechunk_state = SignalChannels.RechunkState{T}(output_chunk_size, nchannels, num_output_buffers; max_outputs_per_input=max_outputs)
+            rechunk_state = SignalChannels.RechunkState{T,N}(output_chunk_size, num_output_buffers, max_outputs)
 
             # In passthrough mode (mtu == output_chunk_size), rechunk! returns the input
             # buffer directly without copying, so we need buffers_in_flight + 2 input buffers
@@ -440,12 +440,11 @@ close(data_channel)
 function SignalChannels.stream_data(
     dev_args,
     config::SignalChannels.SDRChannelConfig,
-    in::SignalChannel{T};
+    in::SignalChannel{T,N};
     warning_buffer_size::Integer=16,
     stats_buffer_size::Integer=1000,
-) where {T<:Number}
+) where {T<:Number,N}
     # Create a tuple of configs matching the number of antenna channels
-    N = in.num_antenna_channels
     configs = ntuple(_ -> config, N)
     return SignalChannels.stream_data(dev_args, configs, in; warning_buffer_size, stats_buffer_size)
 end
@@ -454,17 +453,13 @@ end
 function SignalChannels.stream_data(
     dev_args,
     configs::NTuple{N,SignalChannels.SDRChannelConfig},
-    in::SignalChannel{T};
+    in::SignalChannel{T,N};
     warning_buffer_size::Integer=16,
     stats_buffer_size::Integer=1000,
 ) where {T<:Number,N}
     if Threads.nthreads() < 2
         error("stream_data requires Julia to be started with multiple threads. " *
               "Start Julia with `julia --threads=auto` or set JULIA_NUM_THREADS environment variable.")
-    end
-
-    if in.num_antenna_channels != N
-        error("Number of configs ($N) must match number of antenna channels in SignalChannel ($(in.num_antenna_channels))")
     end
 
     # Validate all configs have the same sample_rate (required for multi-channel streams)
@@ -511,7 +506,7 @@ function SignalChannels.stream_data(
             max_outputs_per_batch = cld(batch_size * input_chunk_size, Int(mtu)) + 1
             # For TX we don't need as many buffers since we write synchronously
             num_buffers = max_outputs_per_batch + 2
-            rechunk_state = SignalChannels.RechunkState{T}(Int(mtu), nchannels, num_buffers; max_outputs_per_input=max_outputs_per_batch)
+            rechunk_state = SignalChannels.RechunkState{T,N}(Int(mtu), num_buffers, max_outputs_per_batch)
 
             # Pre-allocate batch buffer for batch takes
             input_batch = Vector{FixedSizeMatrixDefault{T}}(undef, batch_size)

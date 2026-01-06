@@ -22,7 +22,7 @@ end
 
 @testset "calculate_periodogram" begin
     @testset "Basic functionality" begin
-        data_chan = SignalChannel{ComplexF32}(1024, 1, 10)
+        data_chan = SignalChannel{ComplexF32,1}(1024, 10)
         sampling_freq = 1u"MHz"
         pgram_chan = calculate_periodogram(data_chan, sampling_freq; push_roughly_every=10u"ms")
 
@@ -43,7 +43,7 @@ end
     end
 
     @testset "Multi-channel input" begin
-        data_chan = SignalChannel{ComplexF32}(512, 4, 10)
+        data_chan = SignalChannel{ComplexF32,4}(512, 10)
         sampling_freq = 2u"MHz"
         pgram_chan = calculate_periodogram(data_chan, sampling_freq)
 
@@ -61,7 +61,7 @@ end
     end
 
     @testset "Channel closes properly" begin
-        data_chan = SignalChannel{ComplexF32}(512, 1, 5)
+        data_chan = SignalChannel{ComplexF32,1}(512, 5)
         sampling_freq = 1u"MHz"
         pgram_chan = calculate_periodogram(data_chan, sampling_freq)
 

@@ -25,7 +25,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
     end
 
     @testset "consume_channel with SignalChannel" begin
-        chan = SignalChannel{ComplexF32}(100, 2)
+        chan = SignalChannel{ComplexF32,2}(100)
         results = []
 
         task = @async begin
@@ -45,7 +45,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
     end
 
     @testset "tee" begin
-        input_chan = SignalChannel{ComplexF32}(100, 2)
+        input_chan = SignalChannel{ComplexF32,2}(100)
         out1, out2 = tee(input_chan)
 
         task = @async begin
@@ -115,7 +115,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
     @testset "write_to_file" begin
         mktempdir() do tmpdir
-            input_chan = SignalChannel{ComplexF32}(100, 3, 10)  # Buffer size to prevent blocking
+            input_chan = SignalChannel{ComplexF32,3}(100, 10)  # Buffer size to prevent blocking
             filepath = joinpath(tmpdir, "test_data")
 
             task = @async begin
@@ -149,7 +149,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
     @testset "write_to_file with different types" begin
         mktempdir() do tmpdir
-            input_chan = SignalChannel{Float64}(50, 2, 10)  # Buffer size to prevent blocking
+            input_chan = SignalChannel{Float64,2}(50, 10)  # Buffer size to prevent blocking
             filepath = joinpath(tmpdir, "float_data")
 
             task = @async begin
@@ -178,7 +178,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
     @testset "read_from_file" begin
         mktempdir() do tmpdir
             # First write some data
-            input_chan = SignalChannel{ComplexF32}(100, 3, 10)
+            input_chan = SignalChannel{ComplexF32,3}(100, 10)
             filepath = joinpath(tmpdir, "test_read")
 
             task = @async begin
@@ -208,7 +208,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
     @testset "read_from_file with different chunk size" begin
         mktempdir() do tmpdir
             # Write with one chunk size
-            input_chan = SignalChannel{Float64}(100, 2, 10)
+            input_chan = SignalChannel{Float64,2}(100, 10)
             filepath = joinpath(tmpdir, "test_rechunk")
 
             task = @async begin
@@ -255,7 +255,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         #
         # If rechunk task fails, both input_chan and output_chan should close.
 
-        input_chan = SignalChannel{ComplexF32}(100, 2)
+        input_chan = SignalChannel{ComplexF32,2}(100)
         tee_out1, tee_out2 = tee(input_chan)
 
         # Close one of the tee outputs early - this will cause the tee task to fail

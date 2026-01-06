@@ -1,7 +1,7 @@
 module StreamUtilitiesTest
 
 using Test: @test, @testset
-using SignalChannels: SignalChannel, PipeChannel, spawn_signal_channel_thread, membuffer
+using SignalChannels: SignalChannel, PipeChannel, spawn_signal_channel_thread, membuffer, num_antenna_channels
 using FixedSizeArrays: FixedSizeMatrixDefault
 
 @testset "Stream Utilities" begin
@@ -13,9 +13,9 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             end
         end
 
-        @test chan isa SignalChannel{ComplexF32}
+        @test chan isa SignalChannel{ComplexF32,2}
         @test chan.num_samples == 100
-        @test chan.num_antenna_channels == 2
+        @test num_antenna_channels(chan) == 2
 
         results = []
         for data in chan
@@ -55,12 +55,12 @@ using FixedSizeArrays: FixedSizeMatrixDefault
     end
 
     @testset "membuffer" begin
-        input_chan = SignalChannel{ComplexF32}(100, 2)
+        input_chan = SignalChannel{ComplexF32,2}(100)
         buffered_chan = membuffer(input_chan, 10)
 
-        @test buffered_chan isa SignalChannel{ComplexF32}
+        @test buffered_chan isa SignalChannel{ComplexF32,2}
         @test buffered_chan.num_samples == 100
-        @test buffered_chan.num_antenna_channels == 2
+        @test num_antenna_channels(buffered_chan) == 2
 
         task = @async begin
             for i in 1:5
@@ -80,7 +80,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
     end
 
     @testset "membuffer with large buffer size" begin
-        input_chan = SignalChannel{Float64}(50, 1)
+        input_chan = SignalChannel{Float64,1}(50)
         buffered_chan = membuffer(input_chan, 100)
 
         # Quickly put many items
