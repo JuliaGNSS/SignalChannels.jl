@@ -71,7 +71,7 @@ if Base.find_package("SoapySDR") !== nothing
                         @test mtu > 0
 
                         # Setup TX stream
-                        tx_channel = SignalChannel{ComplexF32}(mtu, 1, 10)
+                        tx_channel = SignalChannel{ComplexF32,1}(mtu, 10)
                         tx_stats_channel, tx_warning_channel = stream_data(device_args, config, tx_channel)
 
                         # Create test pattern with recognizable data
@@ -163,7 +163,7 @@ if Base.find_package("SoapySDR") !== nothing
                     )
 
                     mtu = 1024
-                    tx_channel = SignalChannel{ComplexF32}(mtu, 1, 10)
+                    tx_channel = SignalChannel{ComplexF32,1}(mtu, 10)
                     stats_channel, warning_channel = stream_data(device_args, config, tx_channel)
 
                     # Send some data
@@ -243,7 +243,7 @@ if Base.find_package("SoapySDR") !== nothing
                                 @test rx_data_channel.num_samples == rx_chunk
 
                                 # Setup TX stream with specified chunk size
-                                tx_channel = SignalChannel{ComplexF32}(tx_chunk, 1, 10)
+                                tx_channel = SignalChannel{ComplexF32,1}(tx_chunk, 10)
                                 tx_stats_channel, tx_warning_channel = stream_data(device_args, config, tx_channel)
 
                                 # Create and send test data with recognizable patterns
