@@ -31,9 +31,14 @@ end
 ```
 """
 function spawn_signal_channel_thread(f::Function; T::DataType=ComplexF32,
-    num_samples, num_antenna_channels=1,
+    num_samples, num_antenna_channels::Integer=1,
     buffers_in_flight::Int=16)
-    SignalChannel{T}(num_samples, num_antenna_channels, buffers_in_flight, spawn=true) do out
+    _spawn_signal_channel_thread(f, T, Val(num_antenna_channels), num_samples, buffers_in_flight)
+end
+
+# Inner function with Val{N} for compile-time specialization
+function _spawn_signal_channel_thread(f::Function, ::Type{T}, ::Val{N}, num_samples, buffers_in_flight) where {T,N}
+    SignalChannel{T,N}(num_samples, buffers_in_flight; spawn=true) do out
         f(out)
     end
 end

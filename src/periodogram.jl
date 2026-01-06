@@ -50,12 +50,12 @@ end
 ```
 """
 function calculate_periodogram(
-    data_channel::SignalChannel{T},
+    data_channel::SignalChannel{T,N},
     sampling_freq;
     window=hamming,
     push_roughly_every=100u"ms",
     channel_size=10
-) where {T}
+) where {T,N}
     periodogram_channel = Channel{PeriodogramData}(channel_size)
     last_output = 0.0u"ms"
     runtime = 0.0u"ms"

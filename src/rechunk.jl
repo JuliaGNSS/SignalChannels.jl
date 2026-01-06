@@ -53,8 +53,16 @@ end
 
 # Convenience constructor that takes nchannels as runtime value
 # max_outputs_per_input defaults to num_buffers (conservative estimate)
+# Note: This constructor may not fully specialize the inner loop. For best performance,
+# use the Val-based constructor below.
 function RechunkState{T}(output_chunk_size::Integer, nchannels::Integer, num_buffers::Integer; max_outputs_per_input::Integer=num_buffers) where {T}
     return RechunkState{T,nchannels}(output_chunk_size, num_buffers, max_outputs_per_input)
+end
+
+# Val-based constructor for compile-time specialization of channel count
+# This ensures the per-channel copy loop is fully unrolled for zero allocations
+function RechunkState{T}(output_chunk_size::Integer, ::Val{N}, num_buffers::Integer; max_outputs_per_input::Integer=num_buffers) where {T,N}
+    return RechunkState{T,N}(output_chunk_size, num_buffers, max_outputs_per_input)
 end
 
 # Accessor for number of channels (from type parameter)
@@ -262,53 +270,59 @@ function reset!(state::RechunkState)
 end
 
 """
-    rechunk(in::SignalChannel{T}, chunk_size::Integer, channel_size=16) where {T<:Number}
+    rechunk(in::SignalChannel{T,N}, chunk_size::Integer, channel_size=16) where {T<:Number,N}
 
 Converts a stream of chunks with one size to a stream of chunks with a different size.
 This is useful for adapting data chunk sizes between different processing stages.
 
-The number of antenna channels is preserved from the input channel.
+The number of antenna channels `N` is preserved from the input channel as a type parameter,
+enabling compile-time specialization for zero-allocation rechunking.
 
 Uses batch `put!` operations on the output channel for improved throughput.
 
 # Arguments
-- `in`: Input SignalChannel
+- `in`: Input SignalChannel{T,N}
 - `chunk_size`: Desired number of samples in each output chunk
 - `channel_size`: Buffer size for output channel (default: 16)
 
 # Examples
 ```julia
 # Convert 512-sample chunks to 1024-sample chunks
-input = SignalChannel{ComplexF32}(512, 4)
+input = SignalChannel{ComplexF32,4}(512)
 output = rechunk(input, 1024)
 ```
 """
-function rechunk(in::SignalChannel{T}, chunk_size::Integer, channel_size=16) where {T<:Number}
-    out = SignalChannel{T}(chunk_size, in.num_antenna_channels, channel_size)
+function rechunk(in::SignalChannel{T,N}, chunk_size::Integer, channel_size=16) where {T<:Number,N}
+    out = SignalChannel{T,N}(chunk_size, channel_size)
 
-    task = Threads.@spawn begin
-        # Estimate max outputs per input: input can complete partial + produce full chunks
-        # For downsampling (large input -> small output), this could be large
-        max_outputs = cld(in.num_samples, chunk_size) + 1
+    # Estimate max outputs per input: input can complete partial + produce full chunks
+    # For downsampling (large input -> small output), this could be large
+    max_outputs = cld(in.num_samples, chunk_size) + 1
 
-        # We need channel_size + max_outputs + 2 buffers:
-        # - channel_size buffers can be sitting in the output channel
-        # - max_outputs buffers can be in the output vector
-        # - 1 buffer being written to
-        # - 1 buffer being read by the (single) consumer
-        num_buffers = channel_size + max_outputs + 2
-        state = RechunkState{T}(chunk_size, in.num_antenna_channels, num_buffers; max_outputs_per_input=max_outputs)
+    # We need channel_size + max_outputs + 2 buffers:
+    # - channel_size buffers can be sitting in the output channel
+    # - max_outputs buffers can be in the output vector
+    # - 1 buffer being written to
+    # - 1 buffer being read by the (single) consumer
+    num_buffers = channel_size + max_outputs + 2
 
-        for data in in
-            outputs = rechunk!(state, data)
-            if !isempty(outputs)
-                put!(out.channel, outputs)
-            end
-        end
-
-        close(out)
-    end
+    # N is now a compile-time constant from the type parameter
+    task = Threads.@spawn _rechunk_task(T, Val(N), in, out, chunk_size, num_buffers, max_outputs)
     bind(out, task)
     bind(in, task)  # Propagate errors upstream
     return out
+end
+
+# Inner task function with compile-time N for zero-allocation rechunking
+function _rechunk_task(::Type{T}, ::Val{N}, in, out, chunk_size, num_buffers, max_outputs) where {T,N}
+    state = RechunkState{T,N}(chunk_size, num_buffers, max_outputs)
+
+    for data in in
+        outputs = rechunk!(state, data)
+        if !isempty(outputs)
+            put!(out.channel, outputs)
+        end
+    end
+
+    close(out)
 end

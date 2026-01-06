@@ -93,11 +93,11 @@ task = write_to_file(chan, "data_path")
 wait(task)
 ```
 """
-function write_to_file(in::SignalChannel{T}, file_path::String) where {T<:Number}
+function write_to_file(in::SignalChannel{T,N}, file_path::String) where {T<:Number,N}
     task = Threads.@spawn begin
         type_string = string(T)
         streams = [
-            open("$file_path$type_string$i.dat", "w") for i = 1:in.num_antenna_channels
+            open("$file_path$type_string$i.dat", "w") for i = 1:N
         ]
         try
             consume_channel(in) do buffs

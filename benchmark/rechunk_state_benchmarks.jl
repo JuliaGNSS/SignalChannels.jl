@@ -24,6 +24,23 @@ if RECHUNK_STATE_SUPPORTED
     # ============================================================================
 
     # Setup: create RechunkState and pre-allocated input buffers
+    # Inner function with Val{N} for compile-time specialization
+    function _setup_rechunk_state(
+        ::Type{T},
+        input_size::Int,
+        output_size::Int,
+        ::Val{N},
+        num_buffers::Int
+    ) where {T,N}
+        # Estimate how many output buffers we'll produce
+        total_input_samples = input_size * num_buffers
+        max_output_buffers = cld(total_input_samples, output_size) + 2
+
+        state = RechunkState{T,N}(output_size, max_output_buffers, max_output_buffers)
+        inputs = [FixedSizeMatrixDefault{T}(rand(T, input_size, N)) for _ in 1:num_buffers]
+        return (state, inputs)
+    end
+
     function setup_rechunk_state(
         ::Type{T},
         input_size::Int,
@@ -31,13 +48,7 @@ if RECHUNK_STATE_SUPPORTED
         nchannels::Int,
         num_buffers::Int
     ) where {T}
-        # Estimate how many output buffers we'll produce
-        total_input_samples = input_size * num_buffers
-        max_output_buffers = cld(total_input_samples, output_size) + 2
-
-        state = RechunkState{T}(output_size, nchannels, max_output_buffers)
-        inputs = [FixedSizeMatrixDefault{T}(rand(T, input_size, nchannels)) for _ in 1:num_buffers]
-        return (state, inputs)
+        _setup_rechunk_state(T, input_size, output_size, Val(nchannels), num_buffers)
     end
 
     # Benchmark: process all input buffers through rechunk!, consuming all outputs
@@ -179,18 +190,28 @@ if RECHUNK_STATE_SUPPORTED
     SUITE["rechunk_state"]["zero_copy"] = BenchmarkGroup()
 
     # Setup for passthrough benchmarks - need exact size match
-    function setup_passthrough(::Type{T}, size::Int, nchannels::Int, num_buffers::Int) where {T}
-        state = RechunkState{T}(size, nchannels, num_buffers + 2)
-        inputs = [FixedSizeMatrixDefault{T}(rand(T, size, nchannels)) for _ in 1:num_buffers]
+    # Inner function with Val{N} for compile-time specialization
+    function _setup_passthrough(::Type{T}, size::Int, ::Val{N}, num_buffers::Int) where {T,N}
+        state = RechunkState{T,N}(size, num_buffers + 2, num_buffers + 2)
+        inputs = [FixedSizeMatrixDefault{T}(rand(T, size, N)) for _ in 1:num_buffers]
         return (state, inputs)
     end
 
+    function setup_passthrough(::Type{T}, size::Int, nchannels::Int, num_buffers::Int) where {T}
+        _setup_passthrough(T, size, Val(nchannels), num_buffers)
+    end
+
     # Setup for near-passthrough (requires copying due to size mismatch)
-    function setup_near_passthrough(::Type{T}, size::Int, nchannels::Int, num_buffers::Int) where {T}
+    # Inner function with Val{N} for compile-time specialization
+    function _setup_near_passthrough(::Type{T}, size::Int, ::Val{N}, num_buffers::Int) where {T,N}
         # Output is 1 sample smaller, so copies are required
-        state = RechunkState{T}(size - 1, nchannels, num_buffers + 100)
-        inputs = [FixedSizeMatrixDefault{T}(rand(T, size, nchannels)) for _ in 1:num_buffers]
+        state = RechunkState{T,N}(size - 1, num_buffers + 100, num_buffers + 100)
+        inputs = [FixedSizeMatrixDefault{T}(rand(T, size, N)) for _ in 1:num_buffers]
         return (state, inputs)
+    end
+
+    function setup_near_passthrough(::Type{T}, size::Int, nchannels::Int, num_buffers::Int) where {T}
+        _setup_near_passthrough(T, size, Val(nchannels), num_buffers)
     end
 
     # Passthrough (zero-copy) benchmarks

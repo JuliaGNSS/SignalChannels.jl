@@ -2,6 +2,10 @@ using BenchmarkTools
 using SignalChannels
 using FixedSizeArrays: FixedSizeMatrixDefault
 
+# Detect API version: new API has num_antenna_channels as type parameter (SignalChannel{T,N})
+# Old API has it as constructor argument (SignalChannel{T}(num_samples, num_channels, buffer_size))
+const SIGNAL_CHANNEL_HAS_TYPE_PARAM_N = isdefined(SignalChannels, :num_antenna_channels)
+
 # Number of buffers to push through the pipeline per benchmark iteration
 const NUM_BUFFERS = 1000
 
@@ -10,7 +14,13 @@ const NUM_BUFFERS = 1000
 function setup_pipeline(input_size::Int, output_size::Int, output_channel_size::Int)
     # Create input channel with large buffer so producer can push all data without blocking
     # This ensures we measure rechunk throughput, not input channel contention
-    input = SignalChannel{ComplexF32}(input_size, 1, NUM_BUFFERS)
+    input = if SIGNAL_CHANNEL_HAS_TYPE_PARAM_N
+        # New API: SignalChannel{T,N}(num_samples, buffer_size)
+        SignalChannel{ComplexF32,1}(input_size, NUM_BUFFERS)
+    else
+        # Old API: SignalChannel{T}(num_samples, num_channels, buffer_size)
+        SignalChannel{ComplexF32}(input_size, 1, NUM_BUFFERS)
+    end
 
     # Create the rechunk pipeline - this spawns the task but it blocks waiting for input
     output = rechunk(input, output_size, output_channel_size)

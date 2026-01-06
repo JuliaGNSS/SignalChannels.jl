@@ -3,6 +3,10 @@ using SignalChannels
 using FixedSizeArrays: FixedSizeMatrixDefault
 using Test: @testset, @test
 
+# Detect API version: new API has num_antenna_channels as type parameter (SignalChannel{T,N})
+# Old API has it as constructor argument (SignalChannel{T}(num_samples, num_channels, buffer_size))
+const SOAPY_BENCH_HAS_TYPE_PARAM_N = isdefined(SignalChannels, :num_antenna_channels)
+
 # SoapySDR benchmarks - only run when SoapySDR and a loopback driver are available
 # These benchmarks test allocation-free streaming in the hot path
 #
@@ -51,7 +55,13 @@ if SOAPYSDR_AVAILABLE && HAS_LOOPBACK_DRIVER
     # Setup for standalone SignalChannel benchmark (no SDR)
     # Tests the PipeChannel put!/take! path in isolation
     function setup_channel_benchmark(chunk_size::Int, buffer_size::Int=256)
-        channel = SignalChannel{ComplexF32}(chunk_size, 1, buffer_size)
+        channel = if SOAPY_BENCH_HAS_TYPE_PARAM_N
+            # New API: SignalChannel{T,N}(num_samples, buffer_size)
+            SignalChannel{ComplexF32,1}(chunk_size, buffer_size)
+        else
+            # Old API: SignalChannel{T}(num_samples, num_channels, buffer_size)
+            SignalChannel{ComplexF32}(chunk_size, 1, buffer_size)
+        end
 
         # Pre-allocate test data
         data = FixedSizeMatrixDefault{ComplexF32}(zeros(ComplexF32, chunk_size, 1))
@@ -101,14 +111,14 @@ if SOAPYSDR_AVAILABLE && HAS_LOOPBACK_DRIVER
 
     # Benchmark: Single put! operation on SignalChannel
     # Should show zero or constant allocations per call
-    function benchmark_single_put!(channel::SignalChannel{ComplexF32}, data::FixedSizeMatrixDefault{ComplexF32})
+    function benchmark_single_put!(channel, data::FixedSizeMatrixDefault{ComplexF32})
         put!(channel, data)
         return nothing
     end
 
     # Benchmark: Single take! operation on SignalChannel
     # Should show zero or constant allocations per call
-    function benchmark_single_take!(channel::SignalChannel{ComplexF32})
+    function benchmark_single_take!(channel)
         take!(channel)
         return nothing
     end
@@ -136,7 +146,13 @@ if SOAPYSDR_AVAILABLE && HAS_LOOPBACK_DRIVER
         )
 
         # Setup TX stream
-        tx_channel = SignalChannel{ComplexF32}(chunk_size, 1, 256)
+        tx_channel = if SOAPY_BENCH_HAS_TYPE_PARAM_N
+            # New API: SignalChannel{T,N}(num_samples, buffer_size)
+            SignalChannel{ComplexF32,1}(chunk_size, 256)
+        else
+            # Old API: SignalChannel{T}(num_samples, num_channels, buffer_size)
+            SignalChannel{ComplexF32}(chunk_size, 1, 256)
+        end
         tx_stats_channel, tx_warning_channel = stream_data(device_args, config, tx_channel)
 
         # Create test data buffer
@@ -171,8 +187,8 @@ if SOAPYSDR_AVAILABLE && HAS_LOOPBACK_DRIVER
     # Benchmark: Full TX→RX loopback throughput
     # Producer sends data, consumer receives it
     function benchmark_loopback!(
-        tx_channel::SignalChannel{ComplexF32},
-        rx_channel::SignalChannel{ComplexF32},
+        tx_channel,
+        rx_channel,
         data::FixedSizeMatrixDefault{ComplexF32},
         num_buffers::Int,
     )
@@ -201,8 +217,8 @@ if SOAPYSDR_AVAILABLE && HAS_LOOPBACK_DRIVER
     # Benchmark: Single take! from RX loopback channel
     # Tests the complete SDR pipeline allocation behavior
     function benchmark_loopback_single_take!(
-        tx_channel::SignalChannel{ComplexF32},
-        rx_channel::SignalChannel{ComplexF32},
+        tx_channel,
+        rx_channel,
         data::FixedSizeMatrixDefault{ComplexF32},
     )
         # Send one buffer via TX

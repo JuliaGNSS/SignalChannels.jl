@@ -1,26 +1,26 @@
 module MatrixChannelTest
 
 using Test: @test, @testset, @test_throws
-using SignalChannels: SignalChannel, PipeChannel
+using SignalChannels: SignalChannel, PipeChannel, num_antenna_channels
 using FixedSizeArrays: FixedSizeMatrixDefault
 
 @testset "SignalChannel" begin
     @testset "Construction" begin
-        chan = SignalChannel{ComplexF32}(1024, 4)
+        chan = SignalChannel{ComplexF32,4}(1024)
         @test chan.num_samples == 1024
-        @test chan.num_antenna_channels == 4
+        @test num_antenna_channels(chan) == 4
         @test isopen(chan)
     end
 
     @testset "Construction with buffer size" begin
-        chan = SignalChannel{ComplexF32}(512, 2, 10)
+        chan = SignalChannel{ComplexF32,2}(512, 10)
         @test chan.num_samples == 512
-        @test chan.num_antenna_channels == 2
+        @test num_antenna_channels(chan) == 2
         @test isopen(chan)
     end
 
     @testset "Put and take with correct dimensions" begin
-        chan = SignalChannel{ComplexF32}(1024, 4)
+        chan = SignalChannel{ComplexF32,4}(1024)
         data = FixedSizeMatrixDefault{ComplexF32}(rand(ComplexF32, 1024, 4))
 
         @async put!(chan, data)
@@ -31,7 +31,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
     end
 
     @testset "Put with incorrect dimensions throws error" begin
-        chan = SignalChannel{ComplexF32}(1024, 4)
+        chan = SignalChannel{ComplexF32,4}(1024)
         wrong_data = FixedSizeMatrixDefault{ComplexF32}(rand(ComplexF32, 512, 4))  # Wrong number of samples
 
         @test_throws ArgumentError put!(chan, wrong_data)
@@ -41,7 +41,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
     end
 
     @testset "Channel state operations" begin
-        chan = SignalChannel{ComplexF32}(1024, 4, 1)  # Buffer size of 1
+        chan = SignalChannel{ComplexF32,4}(1024, 1)  # Buffer size of 1
         @test isopen(chan)
         @test isempty(chan)
         @test !isready(chan)
@@ -57,7 +57,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
     end
 
     @testset "Construction with function" begin
-        chan = SignalChannel{ComplexF32}(1024, 4, 5) do c
+        chan = SignalChannel{ComplexF32,4}(1024, 5) do c
             for i in 1:3
                 data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 1024, 4))
                 put!(c, data)
@@ -75,7 +75,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
     end
 
     @testset "Iteration" begin
-        chan = SignalChannel{ComplexF32}(1024, 4, 5) do c
+        chan = SignalChannel{ComplexF32,4}(1024, 5) do c
             for i in 1:3
                 data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 1024, 4))
                 put!(c, data)
@@ -91,7 +91,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
     end
 
     @testset "Multiple put/take operations" begin
-        chan = SignalChannel{Float64}(100, 2, 3)
+        chan = SignalChannel{Float64,2}(100, 3)
 
         task = @async begin
             for i in 1:5
@@ -111,10 +111,10 @@ using FixedSizeArrays: FixedSizeMatrixDefault
     end
 
     @testset "eltype" begin
-        chan_f32 = SignalChannel{ComplexF32}(1024, 4)
+        chan_f32 = SignalChannel{ComplexF32,4}(1024)
         @test eltype(chan_f32) == FixedSizeMatrixDefault{ComplexF32}
 
-        chan_f64 = SignalChannel{Float64}(512, 2)
+        chan_f64 = SignalChannel{Float64,2}(512)
         @test eltype(chan_f64) == FixedSizeMatrixDefault{Float64}
 
         # Test single channel
@@ -125,7 +125,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
     @testset "Single channel with matrices" begin
         chan = SignalChannel{ComplexF32}(1024)
         @test chan.num_samples == 1024
-        @test chan.num_antenna_channels == 1
+        @test num_antenna_channels(chan) == 1
         @test isopen(chan)
 
         # Put and take matrix with shape (1024, 1)
@@ -160,19 +160,19 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
     @testset "similar" begin
         # Test SignalChannel similar
-        input = SignalChannel{ComplexF32}(1024, 4, 10)
+        input = SignalChannel{ComplexF32,4}(1024, 10)
 
         # Default: buffer size 16
         output1 = similar(input)
-        @test output1 isa SignalChannel{ComplexF32}
+        @test output1 isa SignalChannel{ComplexF32,4}
         @test output1.num_samples == 1024
-        @test output1.num_antenna_channels == 4
+        @test num_antenna_channels(output1) == 4
 
         # With buffer size
         output2 = similar(input, 32)
-        @test output2 isa SignalChannel{ComplexF32}
+        @test output2 isa SignalChannel{ComplexF32,4}
         @test output2.num_samples == 1024
-        @test output2.num_antenna_channels == 4
+        @test num_antenna_channels(output2) == 4
 
         # Test generic PipeChannel similar
         input_chan = PipeChannel{Int}(10)
