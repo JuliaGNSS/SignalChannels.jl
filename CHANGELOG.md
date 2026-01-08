@@ -1,5 +1,45 @@
 # Changelog
 
+# [6.0.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v5.0.0...v6.0.0) (2026-01-08)
+
+
+* refactor!: make SignalChannel{T,N} with compile-time channel count ([afdebd7](https://github.com/JuliaGNSS/SignalChannels.jl/commit/afdebd70b8f400a98b00c7fb99fa54f9839d5f6e))
+
+
+### Bug Fixes
+
+* update soapysdr_ext.jl test to use new SignalChannel{T,N} API ([ebd2b52](https://github.com/JuliaGNSS/SignalChannels.jl/commit/ebd2b52aa9da3ff7e3c3d413a3c935cc8ff92170))
+
+
+### Features
+
+* integrate rechunk into stream_data for flexible chunk sizes ([b385343](https://github.com/JuliaGNSS/SignalChannels.jl/commit/b38534399ca96ffab3bc5120ee66f1aec8c5aad3))
+
+
+### BREAKING CHANGES
+
+* SignalChannel API changed from runtime to compile-time
+channel count parameter.
+
+Before: SignalChannel{T}(num_samples, num_channels, buffer_size)
+After:  SignalChannel{T,N}(num_samples, buffer_size)
+
+This enables:
+- Zero-allocation rechunking via compile-time loop unrolling
+- Full type specialization throughout the signal processing pipeline
+- ~2000 M samples/s throughput in benchmarks
+
+Changes:
+- SignalChannel{T} now defaults to SignalChannel{T,1}
+- Added num_antenna_channels(chan) accessor function
+- Updated RechunkState to use SignalChannel{T,N} type parameter
+- Added compile-time API detection in benchmarks for backward compat
+- Updated all tests and extensions for new API
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
 # [5.0.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v4.0.1...v5.0.0) (2026-01-05)
 
 
