@@ -113,6 +113,85 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         @test results2 == [1, 2, 3, 4, 5]
     end
 
+    @testset "tee with Val{3}" begin
+        input_chan = PipeChannel{Int}(10)
+        out1, out2, out3 = tee(Val(3), input_chan)
+
+        task = @async begin
+            for i in 1:5
+                put!(input_chan, i)
+            end
+            close(input_chan)
+        end
+
+        results1 = []
+        results2 = []
+        results3 = []
+
+        # Consume all channels concurrently
+        task1 = @async begin
+            for data in out1
+                push!(results1, data)
+            end
+        end
+
+        task2 = @async begin
+            for data in out2
+                push!(results2, data)
+            end
+        end
+
+        task3 = @async begin
+            for data in out3
+                push!(results3, data)
+            end
+        end
+
+        wait(task)
+        wait(task1)
+        wait(task2)
+        wait(task3)
+        @test results1 == [1, 2, 3, 4, 5]
+        @test results2 == [1, 2, 3, 4, 5]
+        @test results3 == [1, 2, 3, 4, 5]
+    end
+
+    @testset "tee with Val{4} and SignalChannel" begin
+        input_chan = SignalChannel{ComplexF32,2}(100)
+        outputs = tee(Val(4), input_chan)
+
+        @test length(outputs) == 4
+
+        task = @async begin
+            for i in 1:3
+                data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 100, 2))
+                put!(input_chan, data)
+            end
+            close(input_chan)
+        end
+
+        all_results = [[] for _ in 1:4]
+
+        # Consume all channels concurrently
+        consumer_tasks = map(enumerate(outputs)) do (idx, out)
+            @async begin
+                for data in out
+                    push!(all_results[idx], data[1, 1])
+                end
+            end
+        end
+
+        wait(task)
+        for t in consumer_tasks
+            wait(t)
+        end
+
+        expected = [ComplexF32(1, 0), ComplexF32(2, 0), ComplexF32(3, 0)]
+        for results in all_results
+            @test results == expected
+        end
+    end
+
     @testset "write_to_file" begin
         mktempdir() do tmpdir
             input_chan = SignalChannel{ComplexF32,3}(100, 10)  # Buffer size to prevent blocking

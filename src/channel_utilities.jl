@@ -29,11 +29,12 @@ end
 
 """
     tee(in::AbstractChannel, channel_size::Integer=16)
+    tee(::Val{N}, in::AbstractChannel, channel_size::Integer=16) where N
 
-Split a channel into two synchronized outputs. Both output channels receive
+Split a channel into N synchronized outputs. All output channels receive
 identical copies of the data.
 
-Returns a tuple `(out1, out2)` of two channels with the same type as the input.
+Returns a tuple of N channels with the same type as the input.
 
 For `SignalChannel`, preserves the matrix dimensions.
 For generic `PipeChannel`, creates output channels with the specified buffer size.
@@ -41,35 +42,51 @@ For generic `PipeChannel`, creates output channels with the specified buffer siz
 Based on benchmarks in benchmark/benchmarks.jl a channel size of 16 is a sweet spot.
 
 # Arguments
+- `Val{N}`: Number of output channels (default: 2 when not specified)
 - `in`: Input channel to split
 - `channel_size`: Buffer size for output channels (default: 16)
 
 # Examples
 ```julia
-# With SignalChannel
+# With SignalChannel (default 2 outputs)
 input = SignalChannel{ComplexF32}(1024, 4)
 out1, out2 = tee(input, 16)
 
 # With generic PipeChannel
 input = PipeChannel{Int}(10)
 out1, out2 = tee(input, 16)
+
+# With 3 outputs
+input = SignalChannel{ComplexF32}(1024, 4)
+out1, out2, out3 = tee(Val(3), input, 16)
+
+# With 4 outputs
+input = PipeChannel{Int}(10)
+outputs = tee(Val(4), input)  # Returns NTuple{4, PipeChannel{Int}}
 ```
 """
-function tee(in::AbstractChannel, channel_size::Integer=16)
-    out1 = similar(in, channel_size)
-    out2 = similar(in, channel_size)
+function tee(::Val{N}, in::AbstractChannel, channel_size::Integer=16) where N
+    outputs = ntuple(_ -> similar(in, channel_size), Val(N))
     task = Threads.@spawn begin
         for data in in
-            put!(out1, data)
-            put!(out2, data)
+            for out in outputs
+                put!(out, data)
+            end
         end
-        close(out1)
-        close(out2)
+        for out in outputs
+            close(out)
+        end
     end
-    bind(out1, task)
-    bind(out2, task)
+    for out in outputs
+        bind(out, task)
+    end
     bind(in, task)
-    return (out1, out2)
+    return outputs
+end
+
+# Default to 2 outputs for backward compatibility
+function tee(in::AbstractChannel, channel_size::Integer=16)
+    return tee(Val(2), in, channel_size)
 end
 
 """
