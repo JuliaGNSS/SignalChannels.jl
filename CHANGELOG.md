@@ -1,5 +1,12 @@
 # Changelog
 
+# [6.1.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v6.0.0...v6.1.0) (2026-01-23)
+
+
+### Features
+
+* add Val{N} parameter to tee for N-way channel splitting ([38a9f0a](https://github.com/JuliaGNSS/SignalChannels.jl/commit/38a9f0a2bad31396c64163dd9a685bb3bb6d8448))
+
 # [6.0.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v5.0.0...v6.0.0) (2026-01-08)
 
 
