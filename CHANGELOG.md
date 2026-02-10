@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.2.1](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v6.2.0...v6.2.1) (2026-02-10)
+
+
+### Bug Fixes
+
+* use eager value reading in channel_combine tests ([92dae31](https://github.com/JuliaGNSS/SignalChannels.jl/commit/92dae31871f0b8de1ed2a67e3e2f9c5fada89e68))
+
 # [6.2.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v6.1.0...v6.2.0) (2026-02-10)
 
 
