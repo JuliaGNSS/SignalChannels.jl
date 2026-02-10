@@ -18,6 +18,8 @@ export SignalChannel,
     read_from_file,
     spawn_signal_channel_thread,
     membuffer,
+    mux,
+    add,
     stream_data,
     SDRChannelConfig,
     PeriodogramData,
@@ -30,6 +32,7 @@ export SignalChannel,
 include("signal_channel.jl")
 include("rechunk.jl")
 include("channel_utilities.jl")
+include("channel_combine.jl")
 include("stream_utilities.jl")
 include("periodogram.jl")
 
