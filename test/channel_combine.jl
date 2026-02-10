@@ -32,14 +32,17 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             end
 
             muxed = mux(ch1, ch2)
-            chunks = collect(muxed)
+            values = Float32[]
+            for chunk in muxed
+                push!(values, real(chunk[1]))
+            end
 
-            @test length(chunks) == 5
-            @test real(chunks[1][1]) == 1.0f0
-            @test real(chunks[2][1]) == 1.0f0
-            @test real(chunks[3][1]) == 1.0f0
-            @test real(chunks[4][1]) == 4.0f0
-            @test real(chunks[5][1]) == 5.0f0
+            @test length(values) == 5
+            @test values[1] == 1.0f0
+            @test values[2] == 1.0f0
+            @test values[3] == 1.0f0
+            @test values[4] == 4.0f0
+            @test values[5] == 5.0f0
         end
 
         @testset "Empty ch1 - immediately forwards ch2" begin
@@ -60,10 +63,13 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             end
 
             muxed = mux(ch1, ch2)
-            chunks = collect(muxed)
+            values = Float32[]
+            for chunk in muxed
+                push!(values, real(chunk[1]))
+            end
 
-            @test length(chunks) == 3
-            @test all(real(c[1]) == 2.0f0 for c in chunks)
+            @test length(values) == 3
+            @test all(v == 2.0f0 for v in values)
         end
 
         @testset "Empty ch2 - forwards ch1 then closes" begin
@@ -84,10 +90,13 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             close(ch2)
 
             muxed = mux(ch1, ch2)
-            chunks = collect(muxed)
+            values = Float32[]
+            for chunk in muxed
+                push!(values, real(chunk[1]))
+            end
 
-            @test length(chunks) == 3
-            @test all(real(c[1]) == 1.0f0 for c in chunks)
+            @test length(values) == 3
+            @test all(v == 1.0f0 for v in values)
         end
 
         @testset "Order preserved" begin
@@ -116,14 +125,19 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             end
 
             muxed = mux(ch1, ch2)
-            chunks = collect(muxed)
+            # Read values eagerly during iteration to avoid holding references
+            # to pre-allocated buffer slots across multiple chunks.
+            values = Float32[]
+            for chunk in muxed
+                push!(values, real(chunk[1]))
+            end
 
-            @test length(chunks) == 5
-            @test real(chunks[1][1]) == 1.0f0
-            @test real(chunks[2][1]) == 2.0f0
-            @test real(chunks[3][1]) == 3.0f0
-            @test real(chunks[4][1]) == 14.0f0
-            @test real(chunks[5][1]) == 15.0f0
+            @test length(values) == 5
+            @test values[1] == 1.0f0
+            @test values[2] == 2.0f0
+            @test values[3] == 3.0f0
+            @test values[4] == 14.0f0
+            @test values[5] == 15.0f0
         end
 
         @testset "Works with Complex{Int16}" begin
@@ -150,11 +164,14 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             end
 
             muxed = mux(ch1, ch2)
-            chunks = collect(muxed)
+            values = Int16[]
+            for chunk in muxed
+                push!(values, real(chunk[1]))
+            end
 
-            @test length(chunks) == 2
-            @test real(chunks[1][1]) == Int16(100)
-            @test real(chunks[2][1]) == Int16(300)
+            @test length(values) == 2
+            @test values[1] == Int16(100)
+            @test values[2] == Int16(300)
         end
 
         @testset "Errors on mismatched num_samples" begin
@@ -193,18 +210,21 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             end
 
             muxed = mux(ch1, ch2; sync = false)
-            chunks = collect(muxed)
+            values = Float32[]
+            for chunk in muxed
+                push!(values, real(chunk[1]))
+            end
 
             # Without sync: 3 from ch1 + all 5 from ch2 = 8 total
-            @test length(chunks) == 8
+            @test length(values) == 8
             # First 3 from ch1
-            @test all(real(chunks[i][1]) == 1.0f0 for i = 1:3)
+            @test all(values[i] == 1.0f0 for i = 1:3)
             # Then all 5 from ch2 (none were discarded)
-            @test real(chunks[4][1]) == 1.0f0
-            @test real(chunks[5][1]) == 2.0f0
-            @test real(chunks[6][1]) == 3.0f0
-            @test real(chunks[7][1]) == 4.0f0
-            @test real(chunks[8][1]) == 5.0f0
+            @test values[4] == 1.0f0
+            @test values[5] == 2.0f0
+            @test values[6] == 3.0f0
+            @test values[7] == 4.0f0
+            @test values[8] == 5.0f0
         end
     end
 
@@ -239,10 +259,13 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             end
 
             added = add(ch1, ch2)
-            chunks = collect(added)
+            values = Float32[]
+            for chunk in added
+                push!(values, real(chunk[1]))
+            end
 
-            @test length(chunks) == 3
-            @test all(real(c[1]) == 3.0f0 for c in chunks)
+            @test length(values) == 3
+            @test all(v == 3.0f0 for v in values)
         end
 
         @testset "3-channel addition" begin
@@ -288,10 +311,13 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             end
 
             added = add(ch1, ch2, ch3)
-            chunks = collect(added)
+            values = Float32[]
+            for chunk in added
+                push!(values, real(chunk[1]))
+            end
 
-            @test length(chunks) == 2
-            @test all(real(c[1]) == 6.0f0 for c in chunks)
+            @test length(values) == 2
+            @test all(v == 6.0f0 for v in values)
         end
 
         @testset "Multi-antenna channels (N=2)" begin
@@ -324,11 +350,16 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             end
 
             added = add(ch1, ch2)
-            chunks = collect(added)
+            values_col1 = ComplexF32[]
+            values_col2 = ComplexF32[]
+            for chunk in added
+                push!(values_col1, chunk[1, 1])
+                push!(values_col2, chunk[1, 2])
+            end
 
-            @test length(chunks) == 2
-            @test all(c[1, 1] == ComplexF32(1.0, 1.0) for c in chunks)
-            @test all(c[1, 2] == ComplexF32(1.0, 1.0) for c in chunks)
+            @test length(values_col1) == 2
+            @test all(v == ComplexF32(1.0, 1.0) for v in values_col1)
+            @test all(v == ComplexF32(1.0, 1.0) for v in values_col2)
         end
 
         @testset "Works with Complex{Int16}" begin
@@ -357,10 +388,13 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             end
 
             added = add(ch1, ch2)
-            chunks = collect(added)
+            values = Complex{Int16}[]
+            for chunk in added
+                push!(values, chunk[1])
+            end
 
-            @test length(chunks) == 1
-            @test chunks[1][1] == Complex{Int16}(300, 50)
+            @test length(values) == 1
+            @test values[1] == Complex{Int16}(300, 50)
         end
 
         @testset "Errors on mismatched num_samples" begin
