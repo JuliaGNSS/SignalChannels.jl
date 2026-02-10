@@ -1,5 +1,12 @@
 # Changelog
 
+# [6.2.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v6.1.0...v6.2.0) (2026-02-10)
+
+
+### Features
+
+* add mux and add functions for combining SignalChannels ([83a47fb](https://github.com/JuliaGNSS/SignalChannels.jl/commit/83a47fb80e6229596ab265bb167bc934ac92559b))
+
 # [6.1.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v6.0.0...v6.1.0) (2026-01-23)
 
 
