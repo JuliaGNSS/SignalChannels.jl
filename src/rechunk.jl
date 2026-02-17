@@ -293,6 +293,17 @@ output = rechunk(input, 1024)
 ```
 """
 function rechunk(in::SignalChannel{T,N}, chunk_size::Integer, channel_size=16) where {T<:Number,N}
+    # No-op passthrough: when input and output chunk sizes already match, return
+    # the input channel directly. This avoids creating an intermediate channel
+    # and task, which fixes a race condition: with zero-copy passthrough the same
+    # buffer references flow through both the input and output channels, extending
+    # the pipeline depth beyond the upstream producer's buffer pool size. Under
+    # slow-consumer conditions (e.g. JIT compilation on first run), the producer
+    # can wrap around and overwrite buffers still queued in the downstream channel.
+    if in.num_samples == chunk_size
+        return in
+    end
+
     out = SignalChannel{T,N}(chunk_size, channel_size)
 
     # Estimate max outputs per input: input can complete partial + produce full chunks

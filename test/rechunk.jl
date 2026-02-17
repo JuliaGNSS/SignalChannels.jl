@@ -279,6 +279,17 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         @test results[3] === inputs[3]
     end
 
+    @testset "rechunk channel - same size passthrough" begin
+        # When input and output chunk sizes match, rechunk should return
+        # the input channel directly (no intermediate channel or task).
+        # This prevents buffer-aliasing race conditions in pipelines where
+        # the upstream producer uses a fixed-size buffer pool.
+        input_chan = SignalChannel{ComplexF32,2}(1024)
+        output_chan = rechunk(input_chan, 1024)
+
+        @test output_chan === input_chan
+    end
+
     @testset "rechunk channel - upsampling" begin
         # Convert 100-sample chunks to 250-sample chunks
         input_chan = SignalChannel{ComplexF32,2}(100)
