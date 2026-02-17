@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.2.2](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v6.2.1...v6.2.2) (2026-02-17)
+
+
+### Bug Fixes
+
+* return input channel directly when rechunk size matches ([89f2ba6](https://github.com/JuliaGNSS/SignalChannels.jl/commit/89f2ba63a11e2837a722021a7056901195dfd982))
+
 ## [6.2.1](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v6.2.0...v6.2.1) (2026-02-10)
 
 
