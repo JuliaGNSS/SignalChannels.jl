@@ -37,6 +37,21 @@ const FSM = FixedSizeMatrixDefault
         @test all(received .== 1.5)
     end
 
+    @testset "put! stores a matching buffer by reference (zero-copy)" begin
+        # Guards against dispatch regressions that would copy on every put!.
+        # Default Matrix-backed channel with a Matrix buffer:
+        chan = SignalChannel{ComplexF32,1}(64, 4)
+        data = rand(ComplexF32, 64, 1)
+        put!(chan, data)
+        @test take!(chan) === data
+
+        # Explicit FixedSizeArrays backing with a matching FSM buffer:
+        fchan = SignalChannel{Float64,1,FSM{Float64}}(64, 4)
+        fdata = FSM{Float64}(fill(1.0, 64, 1))
+        put!(fchan, fdata)
+        @test take!(fchan) === fdata
+    end
+
     @testset "similar preserves backing type" begin
         chan = SignalChannel{ComplexF32,2,FSM{ComplexF32}}(256, 8)
         s = similar(chan)

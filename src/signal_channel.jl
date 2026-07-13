@@ -222,16 +222,17 @@ is converted into an `M` via the `M(v)` constructor, which allocates a new buffe
 # Throws
 - `ArgumentError`: If matrix dimensions don't match the channel configuration
 """
-# Fast path: value is already the backing type — store it by reference (zero-copy).
-function Base.put!(c::SignalChannel{T,N,M}, v::M) where {T,N,M}
-    _check_put_dims(c, v)
-    Base.put!(c.channel, v)
-end
+# Coerce a matrix to the backing type `M`. Modeled on `Base.convert`'s
+# `(::Type{T}, ::T)` / `(::Type{T}, x)` pair so the identity case dispatches
+# reliably (unlike a `v::M` method on `put!`, where `M` is a diagonal type
+# variable shared with the channel type and is not treated as more specific
+# than the `AbstractMatrix` fallback).
+@inline _as_backing(::Type{M}, v::M) where {M<:AbstractMatrix} = v
+@inline _as_backing(::Type{M}, v::AbstractMatrix) where {M<:AbstractMatrix} = M(v)::M
 
-# Fallback: convert any other matrix into the backing type via its constructor.
 function Base.put!(c::SignalChannel{T,N,M}, v::AbstractMatrix{T}) where {T,N,M}
     _check_put_dims(c, v)
-    Base.put!(c.channel, M(v)::M)
+    Base.put!(c.channel, _as_backing(M, v))
 end
 
 # Delegate Base methods to the underlying channel
