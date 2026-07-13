@@ -1,5 +1,26 @@
 # Changelog
 
+# [7.0.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v6.2.2...v7.0.0) (2026-07-13)
+
+
+* feat!: default to Matrix buffers with optional backing array type ([dfd1e97](https://github.com/JuliaGNSS/SignalChannels.jl/commit/dfd1e976b2e179a3bcbafe64f0b6cf3d0dd524bf))
+
+
+### Bug Fixes
+
+* require PipeChannels 1.0.1 for the iterate/close race fix ([a49755e](https://github.com/JuliaGNSS/SignalChannels.jl/commit/a49755e7bd3cb7329ed8866459ea5b927f64821d))
+* store matching buffers by reference in put! (zero-copy) ([502e88b](https://github.com/JuliaGNSS/SignalChannels.jl/commit/502e88b981814bc7f55bdbe005f106a3920a836a))
+
+
+### BREAKING CHANGES
+
+* SignalChannel is now SignalChannel{T,N,M}; the default eltype
+is Matrix{T} instead of FixedSizeMatrixDefault{T}. Code relying on take!
+returning a FixedSizeMatrixDefault must construct channels with the explicit
+backing type SignalChannel{T,N,FixedSizeMatrixDefault{T}} or adapt to Matrix{T}.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
 ## [6.2.2](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v6.2.1...v6.2.2) (2026-02-17)
 
 
