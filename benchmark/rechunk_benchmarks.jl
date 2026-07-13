@@ -1,6 +1,5 @@
 using BenchmarkTools
 using SignalChannels
-using FixedSizeArrays: FixedSizeMatrixDefault
 
 # Detect API version: new API has num_antenna_channels as type parameter (SignalChannel{T,N})
 # Old API has it as constructor argument (SignalChannel{T}(num_samples, num_channels, buffer_size))
@@ -25,7 +24,7 @@ function setup_pipeline(input_size::Int, output_size::Int, output_channel_size::
     # Create the rechunk pipeline - this spawns the task but it blocks waiting for input
     output = rechunk(input, output_size, output_channel_size)
 
-    buffers = [FixedSizeMatrixDefault{ComplexF32}(zeros(ComplexF32, input_size, 1)) for _ in 1:NUM_BUFFERS]
+    buffers = [Matrix{ComplexF32}(zeros(ComplexF32, input_size, 1)) for _ in 1:NUM_BUFFERS]
 
     return (input, output, buffers)
 end

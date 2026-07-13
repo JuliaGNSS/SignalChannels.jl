@@ -1,6 +1,5 @@
 using BenchmarkTools
 using SignalChannels
-using FixedSizeArrays: FixedSizeMatrixDefault
 
 # Detect API version: new API has num_antenna_channels as type parameter (SignalChannel{T,N})
 # Old API has it as constructor argument (SignalChannel{T}(num_samples, num_channels, buffer_size))
@@ -20,12 +19,12 @@ function setup_channel_benchmark(num_samples::Int, buffer_size::Int)
         SignalChannel{ComplexF32}(num_samples, 1, buffer_size)
     end
 
-    data = FixedSizeMatrixDefault{ComplexF32}(rand(ComplexF32, num_samples, 1))
+    data = Matrix{ComplexF32}(rand(ComplexF32, num_samples, 1))
     return (ch, data)
 end
 
 # Benchmark: push data through the channel and drain output
-function run_channel_benchmark!(ch, data::FixedSizeMatrixDefault{ComplexF32}, num_items::Int)
+function run_channel_benchmark!(ch, data::Matrix{ComplexF32}, num_items::Int)
     # Producer task
     producer = Threads.@spawn begin
         for _ in 1:num_items

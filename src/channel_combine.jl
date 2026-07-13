@@ -1,5 +1,3 @@
-using FixedSizeArrays: FixedSizeMatrixDefault
-
 """
     mux(ch1::SignalChannel{T,N}, ch2::SignalChannel{T,N};
         channel_size::Integer=10, sync::Bool=true) where {T,N}
@@ -40,24 +38,24 @@ out = mux(ch1, ch2; sync=false)
 ```
 """
 function mux(
-    ch1::SignalChannel{T,N},
-    ch2::SignalChannel{T,N};
+    ch1::SignalChannel{T,N,M},
+    ch2::SignalChannel{T,N,M};
     channel_size::Integer = 10,
     sync::Bool = true,
-) where {T,N}
+) where {T,N,M}
     if ch1.num_samples != ch2.num_samples
         error(
             "mux requires both channels to have the same num_samples. Got $(ch1.num_samples) and $(ch2.num_samples)",
         )
     end
     num_samples = ch1.num_samples
-    out = SignalChannel{T,N}(num_samples, channel_size)
+    out = SignalChannel{T,N,M}(num_samples, channel_size)
 
     # Pre-allocate buffer slots to avoid allocation in the hot loop.
     # channel_size + 2 ensures we never overwrite a buffer still in flight
     # in the output channel.
     num_slots = channel_size + 2
-    buffer_slots = [FixedSizeMatrixDefault{T}(undef, num_samples, N) for _ = 1:num_slots]
+    buffer_slots = [M(undef, num_samples, N) for _ = 1:num_slots]
 
     task =
         let ch1 = ch1,
@@ -131,7 +129,7 @@ ch3 = SignalChannel{ComplexF32,1}(1024, 10)
 out = add(ch1, ch2, ch3)
 ```
 """
-function add(channels::SignalChannel{T,N}...; channel_size::Integer = 10) where {T,N}
+function add(channels::SignalChannel{T,N,M}...; channel_size::Integer = 10) where {T,N,M}
     length(channels) >= 2 ||
         throw(ArgumentError("add requires at least 2 channels, got $(length(channels))"))
 
@@ -145,14 +143,14 @@ function add(channels::SignalChannel{T,N}...; channel_size::Integer = 10) where 
         end
     end
 
-    out = SignalChannel{T,N}(num_samples, channel_size)
+    out = SignalChannel{T,N,M}(num_samples, channel_size)
     rest = channels[2:end]
 
     # Pre-allocate buffer slots to avoid allocation in the hot loop.
     # channel_size + 2 ensures we never overwrite a buffer still in flight
     # in the output channel.
     num_slots = channel_size + 2
-    buffer_slots = [FixedSizeMatrixDefault{T}(undef, num_samples, N) for _ = 1:num_slots]
+    buffer_slots = [M(undef, num_samples, N) for _ = 1:num_slots]
 
     task =
         let channels = channels,

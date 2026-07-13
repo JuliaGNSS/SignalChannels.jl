@@ -1,4 +1,5 @@
 include("signal_channel.jl")
+include("backing_type.jl")
 include("rechunk.jl")
 include("channel_utilities.jl")
 include("channel_combine.jl")

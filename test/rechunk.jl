@@ -2,7 +2,6 @@ module RechunkTest
 
 using Test: @test, @testset
 using SignalChannels: SignalChannel, rechunk, RechunkState, rechunk!, get_partial_buffer, reset!, get_num_antenna_channels
-using FixedSizeArrays: FixedSizeMatrixDefault
 
 @testset "Rechunk" begin
     @testset "RechunkState - basic construction" begin
@@ -20,13 +19,13 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         state = RechunkState{Float64}(1024, 1, 5)
 
         # First input: 512 samples - should yield nothing (partial fill)
-        input1 = FixedSizeMatrixDefault{Float64}(fill(1.0, 512, 1))
+        input1 = Matrix{Float64}(fill(1.0, 512, 1))
         results1 = rechunk!(state, input1)
         @test length(results1) == 0
         @test state.chunk_filled == 512
 
         # Second input: 512 more samples - should complete one chunk
-        input2 = FixedSizeMatrixDefault{Float64}(fill(2.0, 512, 1))
+        input2 = Matrix{Float64}(fill(2.0, 512, 1))
         results2 = rechunk!(state, input2)
         @test length(results2) == 1
         @test size(results2[1]) == (1024, 1)
@@ -40,7 +39,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         state = RechunkState{ComplexF32}(100, 4, 5)
 
         # Input with 250 samples × 4 channels
-        input = FixedSizeMatrixDefault{ComplexF32}(undef, 250, 4)
+        input = Matrix{ComplexF32}(undef, 250, 4)
         for ch in 1:4
             input[:, ch] .= ComplexF32(ch, 0)
         end
@@ -62,7 +61,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         # 10000 samples input → 1024 samples output
         state = RechunkState{Float32}(1024, 2, 12)
 
-        input = FixedSizeMatrixDefault{Float32}(fill(3.14f0, 10000, 2))
+        input = Matrix{Float32}(fill(3.14f0, 10000, 2))
         results = rechunk!(state, input)
 
         # 10000 / 1024 = 9.765 → 9 complete chunks
@@ -77,7 +76,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         # When input is exact multiple of output, no remainder
         state = RechunkState{Int}(100, 1, 5)
 
-        input = FixedSizeMatrixDefault{Int}(fill(42, 500, 1))
+        input = Matrix{Int}(fill(42, 500, 1))
         results = rechunk!(state, input)
 
         @test length(results) == 5
@@ -91,7 +90,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         @test get_partial_buffer(state) === nothing
 
         # Add partial data
-        input = FixedSizeMatrixDefault{Float64}(fill(1.0, 50, 2))
+        input = Matrix{Float64}(fill(1.0, 50, 2))
         rechunk!(state, input)  # Should not yield any complete chunks
 
         partial = get_partial_buffer(state)
@@ -106,7 +105,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         state = RechunkState{Float64}(100, 2, 5)
 
         # Add some partial data
-        input = FixedSizeMatrixDefault{Float64}(fill(1.0, 75, 2))
+        input = Matrix{Float64}(fill(1.0, 75, 2))
         rechunk!(state, input)
         @test state.chunk_filled == 75
         @test state.buffer_idx == 1
@@ -128,7 +127,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         # Copy data immediately since buffers are pooled and will be reused
         all_values = Vector{Int}[]
         for i in 1:20
-            input = FixedSizeMatrixDefault{Int}(fill(i, 10, 1))
+            input = Matrix{Int}(fill(i, 10, 1))
             for chunk in rechunk!(state, input)
                 push!(all_values, copy(vec(chunk[:, 1])))
             end
@@ -146,9 +145,9 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         state = RechunkState{Float64}(100, 2, 10)
 
         # Create inputs with sequential values
-        inputs = [FixedSizeMatrixDefault{Float64}(fill(Float64(i), 37, 2)) for i in 1:10]
+        inputs = [Matrix{Float64}(fill(Float64(i), 37, 2)) for i in 1:10]
 
-        all_outputs = FixedSizeMatrixDefault{Float64}[]
+        all_outputs = Matrix{Float64}[]
         for input in inputs
             for output in rechunk!(state, input)
                 push!(all_outputs, copy(output))
@@ -172,7 +171,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
     @testset "RechunkState - view interface" begin
         state = RechunkState{Float32}(50, 1, 5; max_outputs_per_input=3)
-        input = FixedSizeMatrixDefault{Float32}(fill(1.0f0, 125, 1))
+        input = Matrix{Float32}(fill(1.0f0, 125, 1))
 
         # rechunk! returns a view
         outputs = rechunk!(state, input)
@@ -194,7 +193,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         # the input should be returned directly without copying
         state = RechunkState{Float64}(100, 2, 5)
 
-        input = FixedSizeMatrixDefault{Float64}(fill(1.0, 100, 2))
+        input = Matrix{Float64}(fill(1.0, 100, 2))
         results = rechunk!(state, input)
 
         @test length(results) == 1
@@ -207,13 +206,13 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         state = RechunkState{Float64}(100, 2, 5)
 
         # First, add some partial data
-        partial_input = FixedSizeMatrixDefault{Float64}(fill(1.0, 50, 2))
+        partial_input = Matrix{Float64}(fill(1.0, 50, 2))
         rechunk!(state, partial_input)
         @test state.chunk_filled == 50
 
         # Now add input that matches output size - should NOT passthrough
         # because there's partial data buffered
-        input = FixedSizeMatrixDefault{Float64}(fill(2.0, 100, 2))
+        input = Matrix{Float64}(fill(2.0, 100, 2))
         results = rechunk!(state, input)
 
         @test length(results) == 1
@@ -230,7 +229,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         state = RechunkState{Float64}(100, 2, 10; max_outputs_per_input=5)
 
         # Create batch of 4 inputs, each with 37 samples
-        inputs = [FixedSizeMatrixDefault{Float64}(fill(Float64(i), 37, 2)) for i in 1:4]
+        inputs = [Matrix{Float64}(fill(Float64(i), 37, 2)) for i in 1:4]
 
         # Process all 4 inputs at once
         results = rechunk!(state, inputs)
@@ -250,7 +249,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         state = RechunkState{Float64}(50, 1, 10; max_outputs_per_input=5)
 
         # Create batch of 4 inputs, but only process first 2 via view
-        inputs = [FixedSizeMatrixDefault{Float64}(fill(Float64(i), 30, 1)) for i in 1:4]
+        inputs = [Matrix{Float64}(fill(Float64(i), 30, 1)) for i in 1:4]
 
         results = rechunk!(state, @view inputs[1:2])
 
@@ -266,7 +265,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         state = RechunkState{Float64}(100, 2, 10; max_outputs_per_input=5)
 
         # Create inputs that exactly match output size
-        inputs = [FixedSizeMatrixDefault{Float64}(fill(Float64(i), 100, 2)) for i in 1:3]
+        inputs = [Matrix{Float64}(fill(Float64(i), 100, 2)) for i in 1:3]
 
         results = rechunk!(state, inputs)
 
@@ -297,7 +296,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
         task = @async begin
             for i in 1:5
-                data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 100, 2))
+                data = Matrix{ComplexF32}(fill(ComplexF32(i, 0), 100, 2))
                 put!(input_chan, data)
             end
             close(input_chan)
@@ -327,7 +326,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
         task = @async begin
             for i in 1:2
-                data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 1000, 2))
+                data = Matrix{ComplexF32}(fill(ComplexF32(i, 0), 1000, 2))
                 put!(input_chan, data)
             end
             close(input_chan)
@@ -352,7 +351,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         # Send exactly 50 samples (should produce 2 chunks of 25)
         task = @async begin
             for i in 1:5
-                data = FixedSizeMatrixDefault{Float64}(fill(Float64(i), 10, 1))
+                data = Matrix{Float64}(fill(Float64(i), 10, 1))
                 put!(input_chan, data)
             end
             close(input_chan)
@@ -386,7 +385,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         channel_size = 16
 
         # Create data with unique values so we can detect corruption
-        all_original = [FixedSizeMatrixDefault{ComplexF32}(ComplexF32.(i .+ (1:num_samples) ./ num_samples, 0) |> x -> reshape(x, :, 1)) for i in 1:num_chunks]
+        all_original = [Matrix{ComplexF32}(ComplexF32.(i .+ (1:num_samples) ./ num_samples, 0) |> x -> reshape(x, :, 1)) for i in 1:num_chunks]
 
         input = SignalChannel{ComplexF32,1}(num_samples, channel_size)
         intermediate = rechunk(input, 2048, channel_size)

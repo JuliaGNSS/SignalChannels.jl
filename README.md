@@ -45,6 +45,26 @@ for data in chan
 end
 ```
 
+### Backing array type
+
+By default a `SignalChannel` stores buffers as plain `Matrix{T}` (Julia's built-in
+dense array), so you can `put!` ordinary matrices directly. The backing matrix type
+is a type parameter, so you can opt into another `AbstractMatrix{T}` when you want its
+semantics — for example `FixedSizeArrays.FixedSizeMatrixDefault{T}`, which guarantees
+buffer dimensions cannot change after creation:
+
+```julia
+using FixedSizeArrays: FixedSizeMatrixDefault
+
+# 4 antenna channels, 1024 samples, backed by FixedSizeMatrixDefault
+chan = SignalChannel{ComplexF32,4,FixedSizeMatrixDefault{ComplexF32}}(1024)
+```
+
+The channel only ever passes references to buffers, so the backing type has no
+measurable effect on channel throughput — choose it for the semantics you want, not
+for speed. Transforms like `rechunk`, `mux`, and `add` preserve the backing type of
+their input channel.
+
 ### Rechunking
 
 ```julia

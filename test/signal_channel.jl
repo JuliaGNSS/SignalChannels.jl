@@ -2,7 +2,6 @@ module MatrixChannelTest
 
 using Test: @test, @testset, @test_throws
 using SignalChannels: SignalChannel, PipeChannel, num_antenna_channels
-using FixedSizeArrays: FixedSizeMatrixDefault
 
 @testset "SignalChannel" begin
     @testset "Construction" begin
@@ -21,7 +20,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
     @testset "Put and take with correct dimensions" begin
         chan = SignalChannel{ComplexF32,4}(1024)
-        data = FixedSizeMatrixDefault{ComplexF32}(rand(ComplexF32, 1024, 4))
+        data = Matrix{ComplexF32}(rand(ComplexF32, 1024, 4))
 
         @async put!(chan, data)
         received = take!(chan)
@@ -32,11 +31,11 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
     @testset "Put with incorrect dimensions throws error" begin
         chan = SignalChannel{ComplexF32,4}(1024)
-        wrong_data = FixedSizeMatrixDefault{ComplexF32}(rand(ComplexF32, 512, 4))  # Wrong number of samples
+        wrong_data = Matrix{ComplexF32}(rand(ComplexF32, 512, 4))  # Wrong number of samples
 
         @test_throws ArgumentError put!(chan, wrong_data)
 
-        wrong_data2 = FixedSizeMatrixDefault{ComplexF32}(rand(ComplexF32, 1024, 2))  # Wrong number of channels
+        wrong_data2 = Matrix{ComplexF32}(rand(ComplexF32, 1024, 2))  # Wrong number of channels
         @test_throws ArgumentError put!(chan, wrong_data2)
     end
 
@@ -46,7 +45,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         @test isempty(chan)
         @test !isready(chan)
 
-        data = FixedSizeMatrixDefault{ComplexF32}(rand(ComplexF32, 1024, 4))
+        data = Matrix{ComplexF32}(rand(ComplexF32, 1024, 4))
         put!(chan, data)
 
         @test isready(chan)
@@ -59,7 +58,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
     @testset "Construction with function" begin
         chan = SignalChannel{ComplexF32,4}(1024, 5) do c
             for i in 1:3
-                data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 1024, 4))
+                data = Matrix{ComplexF32}(fill(ComplexF32(i, 0), 1024, 4))
                 put!(c, data)
             end
         end
@@ -77,7 +76,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
     @testset "Iteration" begin
         chan = SignalChannel{ComplexF32,4}(1024, 5) do c
             for i in 1:3
-                data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 1024, 4))
+                data = Matrix{ComplexF32}(fill(ComplexF32(i, 0), 1024, 4))
                 put!(c, data)
             end
         end
@@ -95,7 +94,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
         task = @async begin
             for i in 1:5
-                data = FixedSizeMatrixDefault{Float64}(fill(Float64(i), 100, 2))
+                data = Matrix{Float64}(fill(Float64(i), 100, 2))
                 put!(chan, data)
             end
             close(chan)
@@ -112,14 +111,14 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
     @testset "eltype" begin
         chan_f32 = SignalChannel{ComplexF32,4}(1024)
-        @test eltype(chan_f32) == FixedSizeMatrixDefault{ComplexF32}
+        @test eltype(chan_f32) == Matrix{ComplexF32}
 
         chan_f64 = SignalChannel{Float64,2}(512)
-        @test eltype(chan_f64) == FixedSizeMatrixDefault{Float64}
+        @test eltype(chan_f64) == Matrix{Float64}
 
         # Test single channel
         chan_single = SignalChannel{ComplexF32}(1024)
-        @test eltype(chan_single) == FixedSizeMatrixDefault{ComplexF32}
+        @test eltype(chan_single) == Matrix{ComplexF32}
     end
 
     @testset "Single channel with matrices" begin
@@ -129,11 +128,11 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         @test isopen(chan)
 
         # Put and take matrix with shape (1024, 1)
-        data = FixedSizeMatrixDefault{ComplexF32}(rand(ComplexF32, 1024, 1))
+        data = Matrix{ComplexF32}(rand(ComplexF32, 1024, 1))
         @async put!(chan, data)
         received = take!(chan)
 
-        @test received isa FixedSizeMatrixDefault{ComplexF32}
+        @test received isa Matrix{ComplexF32}
         @test size(received) == (1024, 1)
         @test received == data
     end
@@ -141,13 +140,13 @@ using FixedSizeArrays: FixedSizeMatrixDefault
     @testset "Single channel with function constructor" begin
         chan = SignalChannel{ComplexF32}(1024) do c
             for i in 1:3
-                data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 1024, 1))
+                data = Matrix{ComplexF32}(fill(ComplexF32(i, 0), 1024, 1))
                 put!(c, data)
             end
         end
 
         result1 = take!(chan)
-        @test result1 isa FixedSizeMatrixDefault{ComplexF32}
+        @test result1 isa Matrix{ComplexF32}
         @test size(result1) == (1024, 1)
         @test all(result1 .== ComplexF32(1, 0))
 

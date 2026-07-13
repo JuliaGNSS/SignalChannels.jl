@@ -1,5 +1,5 @@
 """
-    RechunkState{T,N}
+    RechunkState{T,N,M}
 
 Mutable state for rechunking operations. Holds pre-allocated buffers and tracks
 the current position in the output chunk being filled.
@@ -11,13 +11,14 @@ enabling the compiler to unroll the per-channel copy loop for zero allocations.
 # Type Parameters
 - `T`: Element type of the data being rechunked
 - `N`: Number of antenna channels (compile-time constant for loop unrolling)
+- `M`: Backing matrix type, `M <: AbstractMatrix{T}` (default: `Matrix{T}`)
 
 # Fields
 - `output_chunk_size::Int`: Number of samples per output chunk
-- `buffer_pool::Vector{FixedSizeMatrixDefault{T}}`: Pre-allocated output buffers
+- `buffer_pool::Vector{M}`: Pre-allocated output buffers
 - `buffer_idx::Int`: Current index into buffer_pool (cycles through)
 - `chunk_filled::Int`: Number of samples currently in the buffer being filled
-- `output_vector::Vector{FixedSizeMatrixDefault{T}}`: Pre-allocated vector for rechunk! results
+- `output_vector::Vector{M}`: Pre-allocated vector for rechunk! results
 
 # Examples
 ```julia
@@ -36,19 +37,24 @@ end
 partial = get_partial_buffer(state)
 ```
 """
-mutable struct RechunkState{T,N}
+mutable struct RechunkState{T,N,M<:AbstractMatrix{T}}
     output_chunk_size::Int
-    buffer_pool::Vector{FixedSizeMatrixDefault{T}}
+    buffer_pool::Vector{M}
     buffer_idx::Int
     chunk_filled::Int
-    output_vector::Vector{FixedSizeMatrixDefault{T}}
+    output_vector::Vector{M}
     output_count::Int
 
-    function RechunkState{T,N}(output_chunk_size::Integer, num_buffers::Integer, max_outputs_per_input::Integer) where {T,N}
-        buffer_pool = [FixedSizeMatrixDefault{T}(undef, output_chunk_size, N) for _ in 1:num_buffers]
-        output_vector = Vector{FixedSizeMatrixDefault{T}}(undef, max_outputs_per_input)
-        return new{T,N}(output_chunk_size, buffer_pool, 1, 0, output_vector, 0)
+    function RechunkState{T,N,M}(output_chunk_size::Integer, num_buffers::Integer, max_outputs_per_input::Integer) where {T,N,M}
+        buffer_pool = [M(undef, output_chunk_size, N) for _ in 1:num_buffers]
+        output_vector = Vector{M}(undef, max_outputs_per_input)
+        return new{T,N,M}(output_chunk_size, buffer_pool, 1, 0, output_vector, 0)
     end
+end
+
+# Default backing type to Matrix{T} when M is not specified
+function RechunkState{T,N}(output_chunk_size::Integer, num_buffers::Integer, max_outputs_per_input::Integer) where {T,N}
+    return RechunkState{T,N,Matrix{T}}(output_chunk_size, num_buffers, max_outputs_per_input)
 end
 
 # Convenience constructor that takes nchannels as runtime value
@@ -56,13 +62,13 @@ end
 # Note: This constructor may not fully specialize the inner loop. For best performance,
 # use the Val-based constructor below.
 function RechunkState{T}(output_chunk_size::Integer, nchannels::Integer, num_buffers::Integer; max_outputs_per_input::Integer=num_buffers) where {T}
-    return RechunkState{T,nchannels}(output_chunk_size, num_buffers, max_outputs_per_input)
+    return RechunkState{T,nchannels,Matrix{T}}(output_chunk_size, num_buffers, max_outputs_per_input)
 end
 
 # Val-based constructor for compile-time specialization of channel count
 # This ensures the per-channel copy loop is fully unrolled for zero allocations
 function RechunkState{T}(output_chunk_size::Integer, ::Val{N}, num_buffers::Integer; max_outputs_per_input::Integer=num_buffers) where {T,N}
-    return RechunkState{T,N}(output_chunk_size, num_buffers, max_outputs_per_input)
+    return RechunkState{T,N,Matrix{T}}(output_chunk_size, num_buffers, max_outputs_per_input)
 end
 
 # Accessor for number of channels (from type parameter)
@@ -146,7 +152,7 @@ end
 end
 
 """
-    rechunk!(state::RechunkState{T,N}, input::FixedSizeMatrixDefault{T}) where {T,N}
+    rechunk!(state::RechunkState{T,N}, input::AbstractMatrix{T}) where {T,N}
 
 Process an input buffer through the rechunk state, returning a view of completed
 output buffers.
@@ -157,11 +163,13 @@ performance (~600 M samples/s for ComplexF32).
 **Zero-copy passthrough**: When `input` exactly matches the output chunk size and
 no partial data is buffered, the input is included directly without copying.
 This means the caller must not modify or reuse the input buffer after passing it
-to `rechunk!` if they need the output to remain valid.
+to `rechunk!` if they need the output to remain valid. For zero-copy passthrough
+to store the input by reference, `input` should match the state's backing type
+`M`; otherwise it is converted into the pre-allocated `M` buffers.
 
 # Arguments
 - `state`: RechunkState holding pre-allocated buffers and current position
-- `input`: Input matrix to rechunk (samples × channels), must be `FixedSizeMatrixDefault{T}`
+- `input`: Input matrix to rechunk (samples × channels)
 
 # Returns
 A `SubArray` view into the state's output vector containing the completed buffers.
@@ -178,14 +186,14 @@ outputs = rechunk!(state, input)
 put!(channel, outputs)  # Batch put all outputs at once
 ```
 """
-@inline function rechunk!(state::RechunkState{T,N}, input::FixedSizeMatrixDefault{T}) where {T,N}
+@inline function rechunk!(state::RechunkState{T,N}, input::AbstractMatrix{T}) where {T,N}
     output_count = rechunk_one!(state, input, 0)
     state.output_count = output_count
     return view(state.output_vector, 1:output_count)
 end
 
 """
-    rechunk!(state::RechunkState{T,N}, inputs::AbstractVector{<:FixedSizeMatrixDefault{T}}) where {T,N}
+    rechunk!(state::RechunkState{T,N}, inputs::AbstractVector{<:AbstractMatrix{T}}) where {T,N}
 
 Process multiple input buffers through the rechunk state in a single call, returning
 a view of all completed output buffers.
@@ -197,7 +205,7 @@ This batch version is more efficient than calling `rechunk!` repeatedly because:
 
 # Arguments
 - `state`: RechunkState holding pre-allocated buffers and current position
-- `inputs`: Vector (or view) of `FixedSizeMatrixDefault{T}` input matrices to rechunk
+- `inputs`: Vector (or view) of `AbstractMatrix{T}` input matrices to rechunk
 
 # Returns
 A `SubArray` view into the state's output vector containing all completed buffers
@@ -206,7 +214,7 @@ from processing all inputs. The view is valid until the next call to `rechunk!`.
 # Examples
 ```julia
 state = RechunkState{ComplexF32}(1024, 4, 20; max_outputs_per_input=10)
-input_batch = Vector{FixedSizeMatrixDefault{ComplexF32}}(undef, 4)
+input_batch = Vector{Matrix{ComplexF32}}(undef, 4)
 # ... fill input_batch ...
 num_taken = take!(channel, input_batch)
 
@@ -215,7 +223,7 @@ outputs = rechunk!(state, @view input_batch[1:num_taken])
 put!(output_channel, outputs)
 ```
 """
-@inline function rechunk!(state::RechunkState{T,N}, inputs::AbstractVector{<:FixedSizeMatrixDefault{T}}) where {T,N}
+@inline function rechunk!(state::RechunkState{T,N}, inputs::AbstractVector{<:AbstractMatrix{T}}) where {T,N}
     output_count = 0
     for input in inputs
         output_count = rechunk_one!(state, input, output_count)
@@ -292,7 +300,7 @@ input = SignalChannel{ComplexF32,4}(512)
 output = rechunk(input, 1024)
 ```
 """
-function rechunk(in::SignalChannel{T,N}, chunk_size::Integer, channel_size=16) where {T<:Number,N}
+function rechunk(in::SignalChannel{T,N,M}, chunk_size::Integer, channel_size=16) where {T<:Number,N,M}
     # No-op passthrough: when input and output chunk sizes already match, return
     # the input channel directly. This avoids creating an intermediate channel
     # and task, which fixes a race condition: with zero-copy passthrough the same
@@ -304,7 +312,7 @@ function rechunk(in::SignalChannel{T,N}, chunk_size::Integer, channel_size=16) w
         return in
     end
 
-    out = SignalChannel{T,N}(chunk_size, channel_size)
+    out = SignalChannel{T,N,M}(chunk_size, channel_size)
 
     # Estimate max outputs per input: input can complete partial + produce full chunks
     # For downsampling (large input -> small output), this could be large
@@ -318,15 +326,15 @@ function rechunk(in::SignalChannel{T,N}, chunk_size::Integer, channel_size=16) w
     num_buffers = channel_size + max_outputs + 2
 
     # N is now a compile-time constant from the type parameter
-    task = Threads.@spawn _rechunk_task(T, Val(N), in, out, chunk_size, num_buffers, max_outputs)
+    task = Threads.@spawn _rechunk_task(T, Val(N), M, in, out, chunk_size, num_buffers, max_outputs)
     bind(out, task)
     bind(in, task)  # Propagate errors upstream
     return out
 end
 
-# Inner task function with compile-time N for zero-allocation rechunking
-function _rechunk_task(::Type{T}, ::Val{N}, in, out, chunk_size, num_buffers, max_outputs) where {T,N}
-    state = RechunkState{T,N}(chunk_size, num_buffers, max_outputs)
+# Inner task function with compile-time N and backing type M for zero-allocation rechunking
+function _rechunk_task(::Type{T}, ::Val{N}, ::Type{M}, in, out, chunk_size, num_buffers, max_outputs) where {T,N,M}
+    state = RechunkState{T,N,M}(chunk_size, num_buffers, max_outputs)
 
     for data in in
         outputs = rechunk!(state, data)
