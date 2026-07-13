@@ -2,13 +2,12 @@ module StreamUtilitiesTest
 
 using Test: @test, @testset
 using SignalChannels: SignalChannel, PipeChannel, spawn_signal_channel_thread, membuffer, num_antenna_channels
-using FixedSizeArrays: FixedSizeMatrixDefault
 
 @testset "Stream Utilities" begin
     @testset "spawn_signal_channel_thread with SignalChannel" begin
         chan = spawn_signal_channel_thread(T=ComplexF32, num_samples=100, num_antenna_channels=2) do out
             for i in 1:3
-                data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 100, 2))
+                data = Matrix{ComplexF32}(fill(ComplexF32(i, 0), 100, 2))
                 put!(out, data)
             end
         end
@@ -27,7 +26,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
     @testset "spawn_signal_channel_thread closes on completion" begin
         chan = spawn_signal_channel_thread(T=Float64, num_samples=50, num_antenna_channels=1) do out
-            data = FixedSizeMatrixDefault{Float64}(fill(1.0, 50, 1))
+            data = Matrix{Float64}(fill(1.0, 50, 1))
             put!(out, data)
         end
 
@@ -41,7 +40,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
     @testset "spawn_signal_channel_thread closes on error" begin
         chan = spawn_signal_channel_thread(T=Float64, num_samples=50, num_antenna_channels=1) do out
-            data = FixedSizeMatrixDefault{Float64}(fill(1.0, 50, 1))
+            data = Matrix{Float64}(fill(1.0, 50, 1))
             put!(out, data)
             error("Intentional error")
         end
@@ -64,7 +63,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
         task = @async begin
             for i in 1:5
-                data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 100, 2))
+                data = Matrix{ComplexF32}(fill(ComplexF32(i, 0), 100, 2))
                 put!(input_chan, data)
             end
             close(input_chan)
@@ -86,7 +85,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         # Quickly put many items
         task = @async begin
             for i in 1:50
-                data = FixedSizeMatrixDefault{Float64}(fill(Float64(i), 50, 1))
+                data = Matrix{Float64}(fill(Float64(i), 50, 1))
                 put!(input_chan, data)
             end
             close(input_chan)

@@ -8,7 +8,6 @@ if Base.find_package("SoapySDR") !== nothing
     using SoapySDR
     using SoapySDR: Device, SoapySDRDeviceError
     using Unitful
-    using FixedSizeArrays: FixedSizeMatrixDefault
 
     using SignalChannels: stream_data, SDRChannelConfig
 
@@ -75,7 +74,7 @@ if Base.find_package("SoapySDR") !== nothing
                         tx_stats_channel, tx_warning_channel = stream_data(device_args, config, tx_channel)
 
                         # Create test pattern with recognizable data
-                        test_pattern = FixedSizeMatrixDefault{ComplexF32}(zeros(ComplexF32, mtu, 1))
+                        test_pattern = Matrix{ComplexF32}(zeros(ComplexF32, mtu, 1))
                         for i in 1:mtu
                             test_pattern[i, 1] = ComplexF32(i / mtu, (mtu - i) / mtu)
                         end
@@ -167,7 +166,7 @@ if Base.find_package("SoapySDR") !== nothing
                     stats_channel, warning_channel = stream_data(device_args, config, tx_channel)
 
                     # Send some data
-                    buffer = FixedSizeMatrixDefault{ComplexF32}(zeros(ComplexF32, mtu, 1))
+                    buffer = Matrix{ComplexF32}(zeros(ComplexF32, mtu, 1))
                     buffer[1:10, 1] .= ComplexF32(1.0 + 1.0im)
                     put!(tx_channel, buffer)
 
@@ -250,7 +249,7 @@ if Base.find_package("SoapySDR") !== nothing
                                 # Each buffer has a unique pattern based on buffer index
                                 sent_data = ComplexF32[]
                                 for buf_idx in 1:num_tx_buffers
-                                    buffer = FixedSizeMatrixDefault{ComplexF32}(zeros(ComplexF32, tx_chunk, 1))
+                                    buffer = Matrix{ComplexF32}(zeros(ComplexF32, tx_chunk, 1))
                                     for i in 1:tx_chunk
                                         # Create pattern: real = buffer_idx, imag = sample position
                                         buffer[i, 1] = ComplexF32(buf_idx, i)

@@ -3,7 +3,6 @@ module SignalChannelsSoapySDRExt
 using SignalChannels
 using SoapySDR
 using Unitful
-using FixedSizeArrays: FixedSizeMatrixDefault
 using DSP: hamming
 
 # Helper to check if a value is within any of the given ranges
@@ -271,7 +270,7 @@ function SignalChannels.stream_data(
         end
     end
 
-    setup_channel = Channel{SignalChannel{T,N}}(1)
+    setup_channel = Channel{SignalChannel{T,N,Matrix{T}}}(1)
     warning_channel = Channel{SignalChannels.StreamWarning}(warning_buffer_size)
 
     task = Threads.@spawn begin
@@ -312,7 +311,7 @@ function SignalChannels.stream_data(
             # When not in passthrough mode, rechunk! copies to its internal buffer pool,
             # so fewer input buffers would suffice, but we use the same count for simplicity.
             num_input_buffers = buffers_in_flight + 2
-            input_buffer_pool = [FixedSizeMatrixDefault{T}(fill(zero(T), mtu, nchannels)) for _ in 1:num_input_buffers]
+            input_buffer_pool = [zeros(T, mtu, nchannels) for _ in 1:num_input_buffers]
             input_buffer_idx = 1
 
             SoapySDR.activate!(stream) do
@@ -453,10 +452,10 @@ end
 function SignalChannels.stream_data(
     dev_args,
     configs::NTuple{N,SignalChannels.SDRChannelConfig},
-    in::SignalChannel{T,N};
+    in::SignalChannel{T,N,M};
     warning_buffer_size::Integer=16,
     stats_buffer_size::Integer=1000,
-) where {T<:Number,N}
+) where {T<:Number,N,M}
     if Threads.nthreads() < 2
         error("stream_data requires Julia to be started with multiple threads. " *
               "Start Julia with `julia --threads=auto` or set JULIA_NUM_THREADS environment variable.")
@@ -506,10 +505,10 @@ function SignalChannels.stream_data(
             max_outputs_per_batch = cld(batch_size * input_chunk_size, Int(mtu)) + 1
             # For TX we don't need as many buffers since we write synchronously
             num_buffers = max_outputs_per_batch + 2
-            rechunk_state = SignalChannels.RechunkState{T,N}(Int(mtu), num_buffers, max_outputs_per_batch)
+            rechunk_state = SignalChannels.RechunkState{T,N,M}(Int(mtu), num_buffers, max_outputs_per_batch)
 
             # Pre-allocate batch buffer for batch takes
-            input_batch = Vector{FixedSizeMatrixDefault{T}}(undef, batch_size)
+            input_batch = Vector{M}(undef, batch_size)
 
             SoapySDR.activate!(stream) do
                 timeout_us = Int(uconvert(u"μs", 0.9u"s").val)

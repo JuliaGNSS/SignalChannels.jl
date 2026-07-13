@@ -2,7 +2,6 @@ module ChannelCombineTest
 
 using Test: @test, @testset, @test_throws
 using SignalChannels: SignalChannel, mux, add
-using FixedSizeArrays: FixedSizeMatrixDefault
 
 @testset "Channel Combine" begin
     @testset "mux" begin
@@ -13,7 +12,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
             task1 = Threads.@spawn begin
                 for _ = 1:3
-                    chunk = FixedSizeMatrixDefault{ComplexF32}(
+                    chunk = Matrix{ComplexF32}(
                         fill(ComplexF32(1.0), chunk_size, 1),
                     )
                     put!(ch1, chunk)
@@ -23,7 +22,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
             task2 = Threads.@spawn begin
                 for i = 1:5
-                    chunk = FixedSizeMatrixDefault{ComplexF32}(
+                    chunk = Matrix{ComplexF32}(
                         fill(ComplexF32(Float32(i)), chunk_size, 1),
                     )
                     put!(ch2, chunk)
@@ -54,7 +53,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
             task2 = Threads.@spawn begin
                 for _ = 1:3
-                    chunk = FixedSizeMatrixDefault{ComplexF32}(
+                    chunk = Matrix{ComplexF32}(
                         fill(ComplexF32(2.0), chunk_size, 1),
                     )
                     put!(ch2, chunk)
@@ -79,7 +78,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
             task1 = Threads.@spawn begin
                 for _ = 1:3
-                    chunk = FixedSizeMatrixDefault{ComplexF32}(
+                    chunk = Matrix{ComplexF32}(
                         fill(ComplexF32(1.0), chunk_size, 1),
                     )
                     put!(ch1, chunk)
@@ -106,7 +105,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
             task1 = Threads.@spawn begin
                 for i = 1:3
-                    chunk = FixedSizeMatrixDefault{ComplexF32}(
+                    chunk = Matrix{ComplexF32}(
                         fill(ComplexF32(Float32(i)), chunk_size, 1),
                     )
                     put!(ch1, chunk)
@@ -116,7 +115,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
             task2 = Threads.@spawn begin
                 for i = 1:5
-                    chunk = FixedSizeMatrixDefault{ComplexF32}(
+                    chunk = Matrix{ComplexF32}(
                         fill(ComplexF32(Float32(10 + i)), chunk_size, 1),
                     )
                     put!(ch2, chunk)
@@ -146,7 +145,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             ch2 = SignalChannel{Complex{Int16},1}(chunk_size, 10)
 
             task1 = Threads.@spawn begin
-                chunk = FixedSizeMatrixDefault{Complex{Int16}}(
+                chunk = Matrix{Complex{Int16}}(
                     fill(Complex{Int16}(100, 0), chunk_size, 1),
                 )
                 put!(ch1, chunk)
@@ -155,7 +154,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
             task2 = Threads.@spawn begin
                 for i = 1:2
-                    chunk = FixedSizeMatrixDefault{Complex{Int16}}(
+                    chunk = Matrix{Complex{Int16}}(
                         fill(Complex{Int16}(100 * (i + 1), 0), chunk_size, 1),
                     )
                     put!(ch2, chunk)
@@ -191,7 +190,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
             task1 = Threads.@spawn begin
                 for _ = 1:3
-                    chunk = FixedSizeMatrixDefault{ComplexF32}(
+                    chunk = Matrix{ComplexF32}(
                         fill(ComplexF32(1.0), chunk_size, 1),
                     )
                     put!(ch1, chunk)
@@ -201,7 +200,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
             task2 = Threads.@spawn begin
                 for i = 1:5
-                    chunk = FixedSizeMatrixDefault{ComplexF32}(
+                    chunk = Matrix{ComplexF32}(
                         fill(ComplexF32(Float32(i)), chunk_size, 1),
                     )
                     put!(ch2, chunk)
@@ -238,7 +237,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
                 for _ = 1:3
                     put!(
                         ch1,
-                        FixedSizeMatrixDefault{ComplexF32}(
+                        Matrix{ComplexF32}(
                             fill(ComplexF32(1.0), chunk_size, 1),
                         ),
                     )
@@ -250,7 +249,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
                 for _ = 1:3
                     put!(
                         ch2,
-                        FixedSizeMatrixDefault{ComplexF32}(
+                        Matrix{ComplexF32}(
                             fill(ComplexF32(2.0), chunk_size, 1),
                         ),
                     )
@@ -278,7 +277,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
                 for _ = 1:2
                     put!(
                         ch1,
-                        FixedSizeMatrixDefault{ComplexF32}(
+                        Matrix{ComplexF32}(
                             fill(ComplexF32(1.0), chunk_size, 1),
                         ),
                     )
@@ -290,7 +289,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
                 for _ = 1:2
                     put!(
                         ch2,
-                        FixedSizeMatrixDefault{ComplexF32}(
+                        Matrix{ComplexF32}(
                             fill(ComplexF32(2.0), chunk_size, 1),
                         ),
                     )
@@ -302,7 +301,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
                 for _ = 1:2
                     put!(
                         ch3,
-                        FixedSizeMatrixDefault{ComplexF32}(
+                        Matrix{ComplexF32}(
                             fill(ComplexF32(3.0), chunk_size, 1),
                         ),
                     )
@@ -329,7 +328,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
                 for _ = 1:2
                     put!(
                         ch1,
-                        FixedSizeMatrixDefault{ComplexF32}(
+                        Matrix{ComplexF32}(
                             fill(ComplexF32(1.0, 0.0), chunk_size, 2),
                         ),
                     )
@@ -341,7 +340,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
                 for _ = 1:2
                     put!(
                         ch2,
-                        FixedSizeMatrixDefault{ComplexF32}(
+                        Matrix{ComplexF32}(
                             fill(ComplexF32(0.0, 1.0), chunk_size, 2),
                         ),
                     )
@@ -370,7 +369,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             task1 = Threads.@spawn begin
                 put!(
                     ch1,
-                    FixedSizeMatrixDefault{Complex{Int16}}(
+                    Matrix{Complex{Int16}}(
                         fill(Complex{Int16}(100, 0), chunk_size, 1),
                     ),
                 )
@@ -380,7 +379,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
             task2 = Threads.@spawn begin
                 put!(
                     ch2,
-                    FixedSizeMatrixDefault{Complex{Int16}}(
+                    Matrix{Complex{Int16}}(
                         fill(Complex{Int16}(200, 50), chunk_size, 1),
                     ),
                 )

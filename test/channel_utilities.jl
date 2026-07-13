@@ -2,7 +2,6 @@ module ChannelUtilitiesTest
 
 using Test: @test, @testset, @test_throws
 using SignalChannels: SignalChannel, PipeChannel, consume_channel, tee, write_to_file, read_from_file
-using FixedSizeArrays: FixedSizeMatrixDefault
 
 @testset "Channel Utilities" begin
     @testset "consume_channel" begin
@@ -30,7 +29,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
         task = @async begin
             for i in 1:3
-                data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 100, 2))
+                data = Matrix{ComplexF32}(fill(ComplexF32(i, 0), 100, 2))
                 put!(chan, data)
             end
             close(chan)
@@ -50,7 +49,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
         task = @async begin
             for i in 1:3
-                data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 100, 2))
+                data = Matrix{ComplexF32}(fill(ComplexF32(i, 0), 100, 2))
                 put!(input_chan, data)
             end
             close(input_chan)
@@ -164,7 +163,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
         task = @async begin
             for i in 1:3
-                data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 100, 2))
+                data = Matrix{ComplexF32}(fill(ComplexF32(i, 0), 100, 2))
                 put!(input_chan, data)
             end
             close(input_chan)
@@ -199,7 +198,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
             task = @async begin
                 for i in 1:5
-                    data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, i), 100, 3))
+                    data = Matrix{ComplexF32}(fill(ComplexF32(i, i), 100, 3))
                     put!(input_chan, data)
                 end
                 close(input_chan)
@@ -233,7 +232,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
             task = @async begin
                 for i in 1:3
-                    data = FixedSizeMatrixDefault{Float64}(fill(Float64(i * 10), 50, 2))
+                    data = Matrix{Float64}(fill(Float64(i * 10), 50, 2))
                     put!(input_chan, data)
                 end
                 close(input_chan)
@@ -262,7 +261,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
             task = @async begin
                 for i in 1:5
-                    data = FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, i), 100, 3))
+                    data = Matrix{ComplexF32}(fill(ComplexF32(i, i), 100, 3))
                     put!(input_chan, data)
                 end
                 close(input_chan)
@@ -292,7 +291,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
 
             task = @async begin
                 for i in 1:5
-                    data = FixedSizeMatrixDefault{Float64}(fill(Float64(i), 100, 2))
+                    data = Matrix{Float64}(fill(Float64(i), 100, 2))
                     put!(input_chan, data)
                 end
                 close(input_chan)
@@ -344,7 +343,7 @@ using FixedSizeArrays: FixedSizeMatrixDefault
         # Producer that tries to put data
         producer_task = Threads.@spawn begin
             for i in 1:100
-                put!(input_chan, FixedSizeMatrixDefault{ComplexF32}(fill(ComplexF32(i, 0), 100, 2)))
+                put!(input_chan, Matrix{ComplexF32}(fill(ComplexF32(i, 0), 100, 2)))
             end
             close(input_chan)
         end

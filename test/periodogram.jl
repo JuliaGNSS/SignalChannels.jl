@@ -2,7 +2,6 @@ module PeriodogramTest
 
 using Test: @test, @testset, @test_throws
 using SignalChannels: SignalChannel, PeriodogramData, calculate_periodogram, periodogram_liveplot
-using FixedSizeArrays: FixedSizeMatrixDefault
 using Unitful
 using DSP
 
@@ -28,7 +27,7 @@ end
 
         task = @async begin
             for i in 1:3
-                data = FixedSizeMatrixDefault{ComplexF32}(rand(ComplexF32, 1024, 1))
+                data = Matrix{ComplexF32}(rand(ComplexF32, 1024, 1))
                 put!(data_chan, data)
             end
             close(data_chan)
@@ -49,7 +48,7 @@ end
 
         task = @async begin
             for i in 1:2
-                data = FixedSizeMatrixDefault{ComplexF32}(rand(ComplexF32, 512, 4))
+                data = Matrix{ComplexF32}(rand(ComplexF32, 512, 4))
                 put!(data_chan, data)
             end
             close(data_chan)
@@ -67,7 +66,7 @@ end
 
         task = @async begin
             for i in 1:2
-                data = FixedSizeMatrixDefault{ComplexF32}(rand(ComplexF32, 512, 1))
+                data = Matrix{ComplexF32}(rand(ComplexF32, 512, 1))
                 put!(data_chan, data)
             end
             close(data_chan)

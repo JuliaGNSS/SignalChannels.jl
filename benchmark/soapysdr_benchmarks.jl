@@ -1,6 +1,5 @@
 using BenchmarkTools
 using SignalChannels
-using FixedSizeArrays: FixedSizeMatrixDefault
 using Test: @testset, @test
 
 # Detect API version: new API has num_antenna_channels as type parameter (SignalChannel{T,N})
@@ -64,7 +63,7 @@ if SOAPYSDR_AVAILABLE && HAS_LOOPBACK_DRIVER
         end
 
         # Pre-allocate test data
-        data = FixedSizeMatrixDefault{ComplexF32}(zeros(ComplexF32, chunk_size, 1))
+        data = Matrix{ComplexF32}(zeros(ComplexF32, chunk_size, 1))
         for i in 1:chunk_size
             data[i, 1] = ComplexF32(i / chunk_size, 0.5f0)
         end
@@ -111,7 +110,7 @@ if SOAPYSDR_AVAILABLE && HAS_LOOPBACK_DRIVER
 
     # Benchmark: Single put! operation on SignalChannel
     # Should show zero or constant allocations per call
-    function benchmark_single_put!(channel, data::FixedSizeMatrixDefault{ComplexF32})
+    function benchmark_single_put!(channel, data::Matrix{ComplexF32})
         put!(channel, data)
         return nothing
     end
@@ -156,7 +155,7 @@ if SOAPYSDR_AVAILABLE && HAS_LOOPBACK_DRIVER
         tx_stats_channel, tx_warning_channel = stream_data(device_args, config, tx_channel)
 
         # Create test data buffer
-        test_data = FixedSizeMatrixDefault{ComplexF32}(zeros(ComplexF32, chunk_size, 1))
+        test_data = Matrix{ComplexF32}(zeros(ComplexF32, chunk_size, 1))
         for i in 1:chunk_size
             test_data[i, 1] = ComplexF32(i / chunk_size, (chunk_size - i) / chunk_size)
         end
@@ -189,7 +188,7 @@ if SOAPYSDR_AVAILABLE && HAS_LOOPBACK_DRIVER
     function benchmark_loopback!(
         tx_channel,
         rx_channel,
-        data::FixedSizeMatrixDefault{ComplexF32},
+        data::Matrix{ComplexF32},
         num_buffers::Int,
     )
         # Start producer
@@ -219,7 +218,7 @@ if SOAPYSDR_AVAILABLE && HAS_LOOPBACK_DRIVER
     function benchmark_loopback_single_take!(
         tx_channel,
         rx_channel,
-        data::FixedSizeMatrixDefault{ComplexF32},
+        data::Matrix{ComplexF32},
     )
         # Send one buffer via TX
         put!(tx_channel, data)

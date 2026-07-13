@@ -174,7 +174,7 @@ function read_from_file(file_path::String, num_samples::Integer, num_antenna_cha
         try
             while !any(eof, streams)
                 # Create buffer for this chunk
-                buff = FixedSizeMatrixDefault{T}(undef, num_samples, num_antenna_channels)
+                buff = Matrix{T}(undef, num_samples, num_antenna_channels)
 
                 # Read data for each channel
                 all_complete = true
