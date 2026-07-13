@@ -19,12 +19,12 @@ function setup_channel_benchmark(num_samples::Int, buffer_size::Int)
         SignalChannel{ComplexF32}(num_samples, 1, buffer_size)
     end
 
-    data = Matrix{ComplexF32}(rand(ComplexF32, num_samples, 1))
+    data = as_buffer(rand(ComplexF32, num_samples, 1))
     return (ch, data)
 end
 
 # Benchmark: push data through the channel and drain output
-function run_channel_benchmark!(ch, data::Matrix{ComplexF32}, num_items::Int)
+function run_channel_benchmark!(ch, data::AbstractMatrix{ComplexF32}, num_items::Int)
     # Producer task
     producer = Threads.@spawn begin
         for _ in 1:num_items

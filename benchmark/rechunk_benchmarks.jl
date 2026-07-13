@@ -24,7 +24,7 @@ function setup_pipeline(input_size::Int, output_size::Int, output_channel_size::
     # Create the rechunk pipeline - this spawns the task but it blocks waiting for input
     output = rechunk(input, output_size, output_channel_size)
 
-    buffers = [Matrix{ComplexF32}(zeros(ComplexF32, input_size, 1)) for _ in 1:NUM_BUFFERS]
+    buffers = [as_buffer(zeros(ComplexF32, input_size, 1)) for _ in 1:NUM_BUFFERS]
 
     return (input, output, buffers)
 end

@@ -36,7 +36,7 @@ if RECHUNK_STATE_SUPPORTED
         max_output_buffers = cld(total_input_samples, output_size) + 2
 
         state = RechunkState{T,N}(output_size, max_output_buffers, max_output_buffers)
-        inputs = [Matrix{T}(rand(T, input_size, N)) for _ in 1:num_buffers]
+        inputs = [as_buffer(rand(T, input_size, N)) for _ in 1:num_buffers]
         return (state, inputs)
     end
 
@@ -192,7 +192,7 @@ if RECHUNK_STATE_SUPPORTED
     # Inner function with Val{N} for compile-time specialization
     function _setup_passthrough(::Type{T}, size::Int, ::Val{N}, num_buffers::Int) where {T,N}
         state = RechunkState{T,N}(size, num_buffers + 2, num_buffers + 2)
-        inputs = [Matrix{T}(rand(T, size, N)) for _ in 1:num_buffers]
+        inputs = [as_buffer(rand(T, size, N)) for _ in 1:num_buffers]
         return (state, inputs)
     end
 
@@ -205,7 +205,7 @@ if RECHUNK_STATE_SUPPORTED
     function _setup_near_passthrough(::Type{T}, size::Int, ::Val{N}, num_buffers::Int) where {T,N}
         # Output is 1 sample smaller, so copies are required
         state = RechunkState{T,N}(size - 1, num_buffers + 100, num_buffers + 100)
-        inputs = [Matrix{T}(rand(T, size, N)) for _ in 1:num_buffers]
+        inputs = [as_buffer(rand(T, size, N)) for _ in 1:num_buffers]
         return (state, inputs)
     end
 
