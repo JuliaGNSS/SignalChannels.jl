@@ -1,6 +1,8 @@
 # Changelog
 
-# [8.0.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v7.0.0...v8.0.0) (2026-09-29)
+## [7.0.1](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v7.0.0...v7.0.1) (2026-09-30)
+
+No changes to the package. Replaces the accidental 8.0.0 release.
 
 # [7.0.0](https://github.com/JuliaGNSS/SignalChannels.jl/compare/v6.2.2...v7.0.0) (2026-07-13)
 
